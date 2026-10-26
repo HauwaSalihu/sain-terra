@@ -2,22 +2,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Menu, LogOut } from "lucide-react";
+import { Bell, Menu, LogOut, Lock } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { useAuth } from "../contexts/AuthContext";
+import { roleLabel, type Permission } from "../lib/roles";
 
 export default function AppShell({
   children,
   title,
   subtitle,
+  permission,
 }: {
   children: React.ReactNode;
   title: string;
   subtitle?: string;
+  /** Page is hidden from staff whose role lacks this permission. */
+  permission?: Permission;
 }) {
   const [navOpen, setNavOpen] = useState(false);
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, can } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -84,7 +88,7 @@ export default function AppShell({
                 {user.name || user.email}
               </p>
               <p className="text-xs text-slate-500">
-                {user.role || "Authenticated user"}
+                {roleLabel(user.role)}
               </p>
             </div>
 
@@ -104,7 +108,17 @@ export default function AppShell({
         </header>
 
         <main className="mx-auto max-w-[1600px] p-4 sm:p-7 xl:p-10">
-          {children}
+          {permission && !can(permission) ? (
+            <div className="mx-auto mt-10 max-w-md rounded-2xl border border-slate-200 bg-white p-10 text-center">
+              <Lock className="mx-auto text-slate-300" size={34} />
+              <h2 className="mt-4 font-semibold">You don&apos;t have access to this page</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                Your role ({roleLabel(user.role)}) does not include this area. Ask an administrator if you need access.
+              </p>
+            </div>
+          ) : (
+            children
+          )}
         </main>
       </div>
     </div>

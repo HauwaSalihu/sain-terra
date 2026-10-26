@@ -10,17 +10,21 @@ import {
   ReceiptText,
   FileText,
   X,
-  Sprout,
+  ShieldCheck,
+  type LucideIcon,
 } from "lucide-react";
 import Image from "next/image";
-import SAIN from "../assets/sainlogo.png"
+import SAIN from "../assets/sainlogo.png";
+import { useAuth } from "../contexts/AuthContext";
+import { roleLabel, type Permission } from "../lib/roles";
 
-const links = [
+const links: { href: string; label: string; icon: LucideIcon; permission?: Permission }[] = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/properties", label: "Properties & units", icon: Building2 },
-  // { href: "/buyers", label: "Buyers", icon: Users },
-  // { href: "/offers", label: "Offers", icon: FileText },
-  // { href: "/payments", label: "Payments & receipts", icon: ReceiptText },
+  { href: "/buyers", label: "Subscribers", icon: Users },
+  { href: "/offers", label: "Offer letters", icon: FileText },
+  { href: "/payments", label: "Payments & receipts", icon: ReceiptText, permission: "payments.view" },
+  { href: "/users", label: "Staff & access", icon: ShieldCheck, permission: "users.manage" },
 ];
 
 export default function Sidebar({
@@ -31,6 +35,7 @@ export default function Sidebar({
   onClose: () => void;
 }) {
   const pathname = usePathname();
+  const { user, can } = useAuth();
 
   return (
     <>
@@ -49,7 +54,7 @@ export default function Sidebar({
         } lg:translate-x-0`}
       >
         {/* TOP: Logo and brand name */}
-        <div className="">
+        <div className="flex items-start justify-between gap-2">
           <Link
             href="/"
             className="flex items-center gap-3 mb-4"
@@ -57,7 +62,9 @@ export default function Sidebar({
           >
             <Image
               src={SAIN}
-              alt="Sainterra logo"  
+              alt="Sain Terra logo"
+              priority
+              className="h-auto w-full"
             />
           </Link>
 
@@ -72,7 +79,7 @@ export default function Sidebar({
 
         {/* MIDDLE: Navigation links */}
         <nav className="flex flex-1 flex-col  gap-1">
-          {links.map(({ href, label, icon: Icon }) => {
+          {links.filter((l) => !l.permission || can(l.permission)).map(({ href, label, icon: Icon }) => {
             const active =
               href === "/"
                 ? pathname === "/"
@@ -98,16 +105,16 @@ export default function Sidebar({
 
         {/* BOTTOM: Admin portal */}
         <div className="mt-auto flex shrink-0 items-center gap-3 border-t border-slate-100 pt-5">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#dfe9df] text-sm font-bold text-[#174b34]">
-            AD
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#dfe9df] text-sm font-bold uppercase text-[#174b34]">
+            {(user?.name || user?.email || "ST").slice(0, 2)}
           </div>
 
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-800">
-              Admin Portal
+            <p className="truncate text-sm font-semibold text-slate-800">
+              {roleLabel(user?.role)}
             </p>
             <p className="text-xs text-slate-400">
-              Internal workspace
+              Internal workspace · staff only
             </p>
           </div>
         </div>

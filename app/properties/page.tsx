@@ -10,23 +10,25 @@ import {
   ImagePlus,
   Trash2,
   UserPlus,
-  Eye,
   Pencil,
   ExternalLink,
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import Reveal from "@/components/Reveal";
+import { useAuth } from "@/contexts/AuthContext";
 import { api, money } from "@/lib/api";
-import type { Property } from "@/lib/types";
+import { offerBuyer, refId } from "@/lib/ledger";
+import { LOCATIONS as locations } from "@/lib/locations";
+import type { Buyer, Offer, Property } from "@/lib/types";
 
-const locations = [
-  "Jahi",
-  "Gudu",
-  "Katampe I",
-  "Katampe II",
-  "Gaduwa",
-  "Guzape",
-];
+const blankForm = () => ({
+  name: "",
+  location: locations[0] as string,
+  propertyType: "Block of flats",
+  description: "",
+  images: "",
+  units: [{ ...blankUnit }] as (typeof blankUnit & { _id?: string; status?: string })[],
+});
 const blankUnit = {
   unitNumber: "Unit 01",
   type: "Flat",
@@ -41,22 +43,28 @@ export default function PropertiesPage() {
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const [form, setForm] = useState({
-    name: "",
-    location: "Jahi",
-    propertyType: "Block of flats",
-    description: "",
-    images: "",
-    units: [{ ...blankUnit }],
-  });
+  const [form, setForm] = useState(blankForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [locationFilter, setLocationFilter] = useState("ALL");
+  const [details, setDetails] = useState<Property | null>(null);
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [buyers, setBuyers] = useState<Buyer[]>([]);
   const router = useRouter();
+  const { can } = useAuth();
 
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(
     null,
   );
   async function load() {
     try {
-      setProperties(await api<Property[]>("/properties"));
+      const [p, o, b] = await Promise.all([
+        api<Property[]>("/properties"),
+        api<Offer[]>("/offers").catch(() => [] as Offer[]),
+        api<Buyer[]>("/buyers").catch(() => [] as Buyer[]),
+      ]);
+      setProperties(p);
+      setOffers(o);
+      setBuyers(b);
     } catch (e) {
       setNotice((e as Error).message);
     }
@@ -93,20 +101,12 @@ export default function PropertiesPage() {
           bathrooms: Number(u.bathrooms),
         })),
       };
-      await api("/properties", {
-        method: "POST",
+      await api(editingId ? `/properties/${editingId}` : "/properties", {
+        method: editingId ? "PATCH" : "POST",
         body: JSON.stringify(payload),
       });
-      setNotice("Property created successfully.");
-      setShowForm(false);
-      setForm({
-        name: "",
-        location: "Jahi",
-        propertyType: "Block of flats",
-        description: "",
-        images: "",
-        units: [{ ...blankUnit }],
-      });
+      setNotice(editingId ? "Property updated." : "Property created successfully.");
+      closeForm();
       await load();
     } catch (e) {
       setNotice((e as Error).message);
@@ -114,10 +114,56 @@ export default function PropertiesPage() {
       setBusy(false);
     }
   }
-  const visible = properties.filter((p) =>
-    `${p.name} ${p.location} ${p.propertyType}`
-      .toLowerCase()
-      .includes(search.toLowerCase()),
+  function closeForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(blankForm());
+  }
+  function startEdit(p: Property) {
+    setEditingId(p._id);
+    setForm({
+      name: p.name,
+      location: p.location,
+      propertyType: p.propertyType,
+      description: p.description || "",
+      images: (p.images || []).join("\n"),
+      units: p.units.map((u) => ({
+        _id: u._id,
+        status: u.status,
+        unitNumber: u.unitNumber,
+        type: u.type,
+        price: String(u.price),
+        bedrooms: String(u.bedrooms ?? ""),
+        bathrooms: String(u.bathrooms ?? ""),
+        description: u.description || "",
+      })),
+    });
+    setShowForm(true);
+  }
+  async function remove(p: Property) {
+    if (offers.some((o) => refId(o.property) === p._id)) {
+      setNotice("This property has offers against it and cannot be deleted.");
+      return;
+    }
+    if (!window.confirm(`Delete ${p.name} and all its units? This cannot be undone.`)) return;
+    try {
+      await api(`/properties/${p._id}`, { method: "DELETE" });
+      setNotice("Property deleted.");
+      await load();
+    } catch (e) {
+      setNotice((e as Error).message);
+    }
+  }
+  const holder = (unitId: string) => {
+    const o = offers.find((x) => refId(x.unit) === unitId && x.status !== "CANCELLED");
+    return o ? offerBuyer(o, buyers)?.fullName : undefined;
+  };
+  const visible = properties.filter(
+    (p) =>
+      (locationFilter === "ALL" || p.location === locationFilter) &&
+      `${p.name} ${p.location} ${p.propertyType}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
   );
   return (
     <AppShell
@@ -132,12 +178,14 @@ export default function PropertiesPage() {
               {properties.length} properties registered
             </p>
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#174b34] px-4 py-3 text-sm font-semibold text-white hover:bg-[#205d40]"
-          >
-            <Plus size={17} /> Add property
-          </button>
+          {can("properties.manage") && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#174b34] px-4 py-3 text-sm font-semibold text-white hover:bg-[#205d40]"
+            >
+              <Plus size={17} /> Add property
+            </button>
+          )}
         </div>
         {notice && (
           <div className="mb-4 flex items-center justify-between rounded-xl border border-[#dce8dc] bg-[#f0f6ef] p-3 text-sm text-[#245739]">
@@ -147,6 +195,20 @@ export default function PropertiesPage() {
             </button>
           </div>
         )}
+        <div className="mb-4 flex flex-wrap gap-2">
+          {["ALL", ...locations].map((l) => {
+            const count = l === "ALL" ? properties.length : properties.filter((p) => p.location === l).length;
+            return (
+              <button
+                key={l}
+                onClick={() => setLocationFilter(l)}
+                className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition ${locationFilter === l ? "border-[#174b34] bg-[#174b34] text-white" : "border-slate-200 bg-white text-slate-600 hover:border-[#174b34]/40"}`}
+              >
+                {l === "ALL" ? "All locations" : l} · {count}
+              </button>
+            );
+          })}
+        </div>
         <div className="mb-5 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
           <Search size={17} className="text-slate-400" />
           <input
@@ -260,12 +322,14 @@ export default function PropertiesPage() {
             <p className="mt-2 text-sm text-slate-500">
               Add your first property to start building the register.
             </p>
-            <button
-              onClick={() => setShowForm(true)}
-              className="mt-5 rounded-xl bg-[#174b34] px-4 py-2.5 text-sm font-semibold text-white"
-            >
-              Add property
-            </button>
+            {can("properties.manage") && (
+              <button
+                onClick={() => setShowForm(true)}
+                className="mt-5 rounded-xl bg-[#174b34] px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                Add property
+              </button>
+            )}
           </div>
         )}
       </Reveal>
@@ -274,13 +338,15 @@ export default function PropertiesPage() {
           <div className="h-full w-full max-w-2xl overflow-y-auto bg-[#f8f9f7] shadow-2xl">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 sm:px-7">
               <div>
-                <h2 className="font-semibold">Add a property</h2>
+                <h2 className="font-semibold">
+                  {editingId ? "Edit property" : "Add a property"}
+                </h2>
                 <p className="mt-1 text-xs text-slate-400">
                   Create a development and its saleable units.
                 </p>
               </div>
               <button
-                onClick={() => setShowForm(false)}
+                onClick={closeForm}
                 className="rounded-lg p-2 hover:bg-slate-100"
               >
                 <X size={19} />
@@ -392,7 +458,7 @@ export default function PropertiesPage() {
                     >
                       <div className="mb-3 flex items-center justify-between">
                         <p className="text-sm font-semibold">Unit {i + 1}</p>
-                        {form.units.length > 1 && (
+                        {form.units.length > 1 && (!u.status || u.status === "AVAILABLE") && (
                           <button
                             type="button"
                             onClick={() =>
@@ -488,7 +554,7 @@ export default function PropertiesPage() {
               <div className="sticky bottom-0 flex gap-3 border-t border-slate-200 bg-[#f8f9f7] py-4">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={closeForm}
                   className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold"
                 >
                   Cancel
@@ -497,7 +563,7 @@ export default function PropertiesPage() {
                   disabled={busy}
                   className="flex-1 rounded-xl bg-[#174b34] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
                 >
-                  {busy ? "Saving…" : "Save property"}
+                  {busy ? "Saving…" : editingId ? "Save changes" : "Save property"}
                 </button>
               </div>
             </form>
@@ -550,9 +616,7 @@ export default function PropertiesPage() {
                   const property = selectedProperty;
                   setSelectedProperty(null);
 
-                  router.push(
-                    `/buyers`,
-                  );
+                  router.push(`/offers?property=${property._id}`);
                 }}
                 className="flex w-full items-center gap-4 rounded-xl border border-slate-200 p-4 text-left transition hover:border-[#174b34] hover:bg-[#f4f8f4]"
               >
@@ -562,22 +626,18 @@ export default function PropertiesPage() {
 
                 <span>
                   <span className="block text-sm font-semibold text-slate-800">
-                    Add buyer
+                    Create offer letter
                   </span>
                   <span className="mt-1 block text-xs text-slate-500">
-                    Register a buyer for this property.
+                    Allocate an available unit to a subscriber.
                   </span>
                 </span>
               </button>
 
                <button
                 onClick={() => {
-                  const property = selectedProperty;
+                  setDetails(selectedProperty);
                   setSelectedProperty(null);
-
-                  router.push(
-                    `/properties`,
-                  );
                 }}
                 className="flex w-full items-center gap-4 rounded-xl border border-slate-200 p-4 text-left transition hover:border-[#174b34] hover:bg-[#f4f8f4]"
               >
@@ -590,19 +650,16 @@ export default function PropertiesPage() {
                     View details
                   </span>
                   <span className="mt-1 block text-xs text-slate-500">
-                    View property information, owners.
+                    Units, availability and subscribers.
                   </span>
                 </span>
               </button>
 
+              {can("properties.manage") && (
               <button
                 onClick={() => {
-                  const property = selectedProperty;
+                  startEdit(selectedProperty);
                   setSelectedProperty(null);
-
-                  router.push(
-                    `/properties`,
-                  );
                 }}
                 className="flex w-full items-center gap-4 rounded-xl border border-slate-200 p-4 text-left transition hover:border-[#174b34] hover:bg-[#f4f8f4]"
               >
@@ -619,15 +676,14 @@ export default function PropertiesPage() {
                   </span>
                 </span>
               </button>
+              )}
 
-               <button
+              {can("properties.delete") && (
+              <button
                 onClick={() => {
                   const property = selectedProperty;
                   setSelectedProperty(null);
-
-                  router.push(
-                    `/properties`,
-                  );
+                  void remove(property);
                 }}
                 className="flex w-full items-center gap-4 rounded-xl border border-slate-200 p-4 text-left transition hover:border-[#174b34] hover:bg-red-50"
               >
@@ -644,6 +700,7 @@ export default function PropertiesPage() {
                   </span>
                 </span>
               </button>
+              )}
             </div>
 
             <button
@@ -652,6 +709,73 @@ export default function PropertiesPage() {
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+      {details && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-black/40"
+          onClick={() => setDetails(null)}
+        >
+          <div
+            className="h-full w-full max-w-xl overflow-y-auto bg-[#f8f9f7]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white p-5">
+              <div>
+                <h2 className="font-semibold">{details.name}</h2>
+                <p className="mt-1 flex items-center gap-1 text-xs text-slate-400">
+                  <MapPin size={12} />
+                  {details.location} · {details.propertyType}
+                </p>
+              </div>
+              <button onClick={() => setDetails(null)}>
+                <X size={19} />
+              </button>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                {(["AVAILABLE", "RESERVED", "SOLD", "RENTED"] as const).map((s) => (
+                  <div key={s} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="text-lg font-semibold">
+                      {details.units.filter((u) => u.status === s).length}
+                    </p>
+                    <p className="text-slate-400">{s.toLowerCase()}</p>
+                  </div>
+                ))}
+              </div>
+              {details.description && (
+                <p className="rounded-xl bg-white p-4 text-sm text-slate-600">
+                  {details.description}
+                </p>
+              )}
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                {details.units.map((u) => (
+                  <div
+                    key={u._id}
+                    className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-0"
+                  >
+                    <div>
+                      <p className="font-semibold">
+                        {u.unitNumber} · {u.type}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        {holder(u._id) ? `Subscriber: ${holder(u._id)}` : "No subscriber"}
+                        {u.bedrooms ? ` · ${u.bedrooms} bed` : ""}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">{money(u.price)}</p>
+                      <span
+                        className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs ${u.status === "AVAILABLE" ? "bg-emerald-100 text-emerald-800" : u.status === "SOLD" ? "bg-amber-100 text-amber-800" : "bg-slate-200 text-slate-600"}`}
+                      >
+                        {u.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -6,6 +6,7 @@ import Image from "next/image";
 import axios from "axios";
 import { useAuth } from "../../contexts/AuthContext";
 import SAIN from "../../assets/sainlogo.png";
+import { API_URL, TOKEN_KEY } from "../../lib/api";
 
 function LoginForm() {
   const router = useRouter();
@@ -23,14 +24,8 @@ function LoginForm() {
     setSubmitting(true);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-
-      if (!apiUrl) {
-        throw new Error("API URL is not configured.");
-      }
-
       const response = await axios.post(
-        `${apiUrl}/auth/login`,
+        `${API_URL}/auth/login`,
         { email, password },
         {
           headers: {
@@ -39,20 +34,21 @@ function LoginForm() {
         },
       );
 
-      const { accessToken, user } = response.data;
+      const { accessToken } = response.data;
 
       if (!accessToken) {
         throw new Error("Login succeeded, but no access token was returned.");
       }
 
       // Save the JWT returned by the backend.
-      localStorage.setItem("accessToken", accessToken);
+      localStorage.setItem(TOKEN_KEY, accessToken);
 
       // Refresh the authentication context.
       await refreshUser();
 
-      // Redirect to the home page after successful login.
-      router.replace("/");
+      // Return to the page that sent the user to login, if it is internal.
+      const next = searchParams.get("next");
+      router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
       router.refresh();
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
@@ -97,15 +93,15 @@ function LoginForm() {
           <div className="flex justify-center">
             <Image
               src={SAIN}
-              alt="Sainterra logo"
+              alt="Sain Terra logo"
               width={190}
               height={70}
               priority
-              className="h-auto max-h-20 w-auto object-contain"
+              className="mb-3 h-auto max-h-20 w-auto object-contain"
             />
           </div>
 
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#286343]">
+          <p className="mb-6 text-xs font-semibold uppercase tracking-[0.2em] text-[#286343]">
             Property Management Portal
           </p>
         </div>
@@ -117,8 +113,8 @@ function LoginForm() {
         >
           <div className="mb-7">
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Sign in to access your properties, buyers, and financial
-              operations.
+              Staff only. Sign in with the account an administrator
+              created for you.
             </p>
           </div>
 
@@ -176,12 +172,12 @@ function LoginForm() {
             {submitting && (
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
             )}
-            {submitting ? "Signing in..." : "Sign in to Sainterra"}
+            {submitting ? "Signing in..." : "Sign in to Sain Terra"}
           </button>
         </form>
 
-        <p className="text-center text-xs text-black">
-          © {new Date().getFullYear()} Sainterra. All rights reserved.
+        <p className="mt-6 text-center text-xs text-slate-500">
+          © {new Date().getFullYear()} Sain Terra. All rights reserved.
         </p>
       </div>
     </main>
