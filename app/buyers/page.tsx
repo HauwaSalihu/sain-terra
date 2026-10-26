@@ -1,0 +1,24 @@
+"use client";
+import { FormEvent, useEffect, useState } from "react";
+import { Users, Plus, Search, X, Phone, Mail } from "lucide-react";
+import AppShell from "@/components/AppShell";
+import { api } from "@/lib/api";
+import type { Buyer } from "@/lib/types";
+export default function BuyersPage() {
+  const [buyers,setBuyers] = useState<Buyer[]>([]); const [query,setQuery] = useState(""); const [open,setOpen] = useState(false); const [notice,setNotice] = useState("");
+  const [form,setForm] = useState({fullName:"",phone:"",email:"",address:""});
+  async function load(){try{setBuyers(await api<Buyer[]>("/buyers"));}catch(e){setNotice((e as Error).message);}}
+  useEffect(()=>{load();},[]);
+  async function submit(e:FormEvent){e.preventDefault();try{await api("/buyers",{method:"POST",body:JSON.stringify(form)});setOpen(false);setForm({fullName:"",phone:"",email:"",address:""});setNotice("Buyer created.");load();}catch(e){setNotice((e as Error).message);}}
+  const visible=buyers.filter(b=>`${b.fullName} ${b.phone} ${b.email||""}`.toLowerCase().includes(query.toLowerCase()));
+  return <AppShell title="Buyers" subtitle="Maintain buyer records and keep allocations connected to verified customer details.">
+    <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="text-xl font-semibold">Buyer directory</h2><p className="mt-1 text-sm text-slate-500">{buyers.length} registered buyers</p></div><button onClick={()=>setOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#174b34] px-4 py-3 text-sm font-semibold text-white"><Plus size={17}/> Add buyer</button></div>
+    {notice&&<p className="mb-4 rounded-xl bg-[#edf4ed] p-3 text-sm text-[#245739]">{notice}</p>}
+    <div className="mb-5 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3"><Search size={17} className="text-slate-400"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search buyers…" className="w-full bg-transparent text-sm outline-none"/></div>
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="hidden grid-cols-[1.4fr_1fr_1.4fr_1fr] gap-4 bg-[#f7f8f6] px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 md:grid"><span>Buyer</span><span>Phone</span><span>Email</span><span>Address</span></div>
+      {visible.map(b=><div key={b._id} className="grid gap-2 border-t border-slate-100 px-5 py-4 md:grid-cols-[1.4fr_1fr_1.4fr_1fr] md:items-center md:gap-4"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-full bg-[#e7f0e8] text-sm font-bold text-[#245739]">{b.fullName.split(" ").map(x=>x[0]).slice(0,2).join("")}</div><span className="text-sm font-semibold">{b.fullName}</span></div><span className="flex items-center gap-2 text-sm text-slate-500"><Phone size={14}/>{b.phone}</span><span className="flex items-center gap-2 break-all text-sm text-slate-500"><Mail size={14}/>{b.email||"—"}</span><span className="text-sm text-slate-500">{b.address||"—"}</span></div>)}
+      {!visible.length&&<div className="p-12 text-center"><Users className="mx-auto text-slate-300" size={32}/><p className="mt-3 text-sm font-semibold">No buyers found</p><p className="mt-1 text-xs text-slate-400">Create a buyer record to link customers to units and offers.</p></div>}
+    </div>
+    {open&&<div className="fixed inset-0 z-50 flex justify-end bg-black/40"><div className="h-full w-full max-w-lg overflow-y-auto bg-[#f8f9f7]"><div className="flex items-center justify-between border-b bg-white p-5"><h2 className="font-semibold">Add buyer</h2><button onClick={()=>setOpen(false)}><X size={19}/></button></div><form onSubmit={submit} className="space-y-4 p-5"><label className="block text-xs text-slate-500">Full name *<input required value={form.fullName} onChange={e=>setForm({...form,fullName:e.target.value})} className="mt-2 w-full rounded-xl border bg-white px-3 py-3 text-sm text-slate-900"/></label><label className="block text-xs text-slate-500">Phone *<input required value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} className="mt-2 w-full rounded-xl border bg-white px-3 py-3 text-sm text-slate-900"/></label><label className="block text-xs text-slate-500">Email<input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} className="mt-2 w-full rounded-xl border bg-white px-3 py-3 text-sm text-slate-900"/></label><label className="block text-xs text-slate-500">Address<textarea value={form.address} onChange={e=>setForm({...form,address:e.target.value})} className="mt-2 w-full rounded-xl border bg-white px-3 py-3 text-sm text-slate-900"/></label><button className="w-full rounded-xl bg-[#174b34] px-4 py-3 text-sm font-semibold text-white">Save buyer</button></form></div></div>}
+  </AppShell>;
+}
