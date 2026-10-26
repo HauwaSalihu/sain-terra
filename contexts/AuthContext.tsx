@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { api, getToken, TOKEN_KEY } from "@/lib/api";
+import { stopDemo } from "@/lib/demo";
 import { can as roleCan, type Permission } from "@/lib/roles";
 import type { User } from "@/lib/types";
 
@@ -53,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // The token is dropped locally either way.
     }
     localStorage.removeItem(TOKEN_KEY);
+    stopDemo();
     setUser(null);
   }, []);
 
