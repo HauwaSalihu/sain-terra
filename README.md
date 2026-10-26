@@ -4,13 +4,44 @@ Internal real estate portal for Sain Terra (Next.js frontend). It covers propert
 **Jahi, Katampe 1, Katampe 2, Gaduwa, Gudu and Guzape**, subscriber track records, offer
 letter automation and digital receipts.
 
-## Setup
+## Quick test (no server needed)
 
 ```bash
-cp .env.local.example .env.local   # point NEXT_PUBLIC_API_URL at the API
 npm install
 npm run dev
 ```
+
+Open http://localhost:3000, and on the login page click one of the **Demo as …** buttons.
+This loads sample properties in all six locations, subscribers, offers and payments.
+Everything is saved only in your browser. While in demo mode, a yellow bar at the top lets
+you switch roles (to see what Mr Nathan, Sharon or an agent can do) or reset the data.
+Logging out leaves demo mode.
+
+## Running for real
+
+You need [MongoDB](https://www.mongodb.com/try/download/community) (or a free MongoDB Atlas
+database).
+
+**1. Start the API** (in `server/`):
+
+```bash
+cd server
+cp .env.example .env        # set MONGODB_URI and a long random JWT_SECRET
+npm install
+npm run create-admin -- "Your Name" you@example.com   # asks for a password
+npm run dev                 # http://localhost:4000/api
+```
+
+**2. Start the website** (in the project root, a second terminal):
+
+```bash
+cp .env.local.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:4000/api
+npm install
+npm run dev                        # http://localhost:3000
+```
+
+Sign in with the admin account you just created, then add Mr Nathan, Sharon and the
+agents on **Staff & access**.
 
 Optional env vars printed on offer letters and receipts:
 `NEXT_PUBLIC_COMPANY_ADDRESS`, `NEXT_PUBLIC_COMPANY_PHONE`, `NEXT_PUBLIC_COMPANY_EMAIL`.
@@ -51,6 +82,8 @@ Roles are set in `lib/roles.ts`. The UI hides what a role cannot use, but **the 
 enforce the same rules**. Never rely on the frontend alone.
 
 ## API contract
+
+Implemented in `server/` (Express + MongoDB). For production: `npm run build && npm start`.
 
 All requests send `Authorization: Bearer <accessToken>`. A `401` signs the user out.
 

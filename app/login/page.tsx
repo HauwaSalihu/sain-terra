@@ -7,6 +7,9 @@ import axios from "axios";
 import { useAuth } from "../../contexts/AuthContext";
 import SAIN from "../../assets/sainlogo.png";
 import { API_URL, TOKEN_KEY } from "../../lib/api";
+import { startDemo } from "../../lib/demo";
+import { ROLES } from "../../lib/roles";
+import type { Role } from "../../lib/types";
 
 function LoginForm() {
   const router = useRouter();
@@ -17,6 +20,12 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  async function enterDemo(role: Role) {
+    startDemo(role);
+    await refreshUser();
+    router.replace("/");
+  }
 
   async function handleLogin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -175,6 +184,27 @@ function LoginForm() {
             {submitting ? "Signing in..." : "Sign in to Sain Terra"}
           </button>
         </form>
+
+        <div className="mt-5 rounded-2xl border border-dashed border-[#b8954b]/50 bg-[#fbf7ee] p-5">
+          <p className="text-sm font-semibold text-slate-800">Just testing?</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Try the portal with sample data. No server or account needed;
+            everything stays in this browser. Pick a role to see what that
+            person can do.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {ROLES.map((r) => (
+              <button
+                key={r.value}
+                type="button"
+                onClick={() => void enterDemo(r.value)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:border-[#174b34] hover:text-[#174b34]"
+              >
+                Demo as {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <p className="mt-6 text-center text-xs text-slate-500">
           © {new Date().getFullYear()} Sain Terra. All rights reserved.

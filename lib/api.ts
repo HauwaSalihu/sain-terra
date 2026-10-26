@@ -1,3 +1,4 @@
+import { demoApi, isDemo } from "./demo";
 
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
@@ -13,6 +14,10 @@ export async function api<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  if (isDemo()) {
+    return demoApi<T>(path, init);
+  }
+
   const headers = new Headers(init.headers);
 
   if (!(init.body instanceof FormData) && init.body) {

@@ -6,7 +6,9 @@ import { Bell, Menu, LogOut, Lock } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { useAuth } from "../contexts/AuthContext";
-import { roleLabel, type Permission } from "../lib/roles";
+import { ROLES, roleLabel, type Permission } from "../lib/roles";
+import { isDemo, resetDemoData, setDemoRole } from "../lib/demo";
+import type { Role } from "../lib/types";
 
 export default function AppShell({
   children,
@@ -52,6 +54,37 @@ export default function AppShell({
       />
 
       <div className="min-h-screen lg:pl-[260px]">
+        {isDemo() && (
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 bg-amber-100 px-4 py-2 text-xs text-amber-900">
+            <span><b>Demo mode</b> · sample data saved only in this browser</span>
+            <label className="flex items-center gap-1.5">
+              Viewing as
+              <select
+                value={user.role}
+                onChange={(e) => {
+                  setDemoRole(e.target.value as Role);
+                  window.location.reload();
+                }}
+                className="rounded border border-amber-300 bg-white px-1.5 py-0.5"
+              >
+                {ROLES.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              onClick={() => {
+                if (window.confirm("Reset all demo data to the original samples?")) {
+                  resetDemoData();
+                  window.location.reload();
+                }
+              }}
+              className="font-semibold underline"
+            >
+              Reset demo data
+            </button>
+          </div>
+        )}
         <header className="sticky top-0 z-20 flex h-[76px] items-center justify-between border-b border-[#e7eae5] bg-[#f8f9f7]/90 px-4 backdrop-blur-xl sm:px-7 xl:px-10">
           <div className="flex min-w-0 items-center gap-3">
             <button

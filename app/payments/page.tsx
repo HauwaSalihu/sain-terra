@@ -141,7 +141,15 @@ export default function PaymentsPage() {
                   <td className="px-5 py-4"><p className="font-medium">{(offer && offerBuyer(offer, buyers)?.fullName) || "—"}</p><p className="mt-1 text-xs text-slate-400">{prop ? `${prop.name} · ${prop.location}` : ""}</p></td>
                   <td className="px-5 py-4 font-semibold">{money(p.amount)}</td>
                   <td className="px-5 py-4 text-xs">
-                    {pos.known ? (pos.fullyPaid ? <span className="font-semibold text-emerald-700">Paid in full · {money(pos.total)}</span> : <>{money(pos.paidToDate)} of {money(pos.total)}<p className="mt-1 text-slate-400">Balance {money(pos.balance)}</p></>) : "—"}
+                    {!pos.known ? "—" : p.status === "PENDING" ? (
+                      <span className="text-amber-700">Awaiting confirmation<p className="mt-1 text-slate-400">{pos.fullyPaid ? "Will clear the balance" : `Balance after: ${money(pos.balance)}`}</p></span>
+                    ) : p.status === "REVERSED" ? (
+                      <span className="text-slate-400">Not counted</span>
+                    ) : pos.fullyPaid ? (
+                      <span className="font-semibold text-emerald-700">Paid in full · {money(pos.total)}</span>
+                    ) : (
+                      <>{money(pos.paidToDate)} of {money(pos.total)}<p className="mt-1 text-slate-400">Balance {money(pos.balance)}</p></>
+                    )}
                   </td>
                   <td className="px-5 py-4">{p.method.replaceAll("_", " ")}<p className="mt-1 text-xs text-slate-400">{p.reference || "—"}</p></td>
                   <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs ${p.status === "CONFIRMED" ? "bg-emerald-100 text-emerald-800" : p.status === "REVERSED" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>{p.status}</span></td>
