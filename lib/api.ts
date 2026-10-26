@@ -1,6 +1,13 @@
 
-const API_URL =
+export const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+
+export const TOKEN_KEY = "accessToken";
+
+export function getToken() {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
 
 export async function api<T>(
   path: string,
@@ -12,17 +19,28 @@ export async function api<T>(
     headers.set("Content-Type", "application/json");
   }
 
+  const token = getToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     headers,
     cache: "no-store",
   });
 
+  if (response.status === 401 && typeof window !== "undefined") {
+    localStorage.removeItem(TOKEN_KEY);
+    window.dispatchEvent(new Event("auth:expired"));
+  }
+
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    throw new Error(
-      payload.message || `Request failed (${response.status})`,
-    );
+    const message = Array.isArray(payload.message)
+      ? payload.message.join(", ")
+      : payload.message;
+    throw new Error(message || `Request failed (${response.status})`);
   }
 
   if (response.status === 204) {

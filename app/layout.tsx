@@ -4,8 +4,8 @@ import Providers from "../providers";
 import "../app/globals.css";
 
 export const metadata: Metadata = {
-  title: "SainTerra",
-  description: "Sainterra property management portal",
+  title: "Sain Terra",
+  description: "Sain Terra internal real estate portal",
 };
 
 export default function RootLayout({

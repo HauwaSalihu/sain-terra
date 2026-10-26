@@ -8,13 +8,22 @@ export type Property = {
   _id: string; name: string; location: string; description: string;
   propertyType: string; images: string[]; units: Unit[]; createdAt?: string;
 };
-export type Buyer = { _id: string; fullName: string; email?: string; phone: string; address?: string };
+/** A subscriber is a buyer who has (or will have) an offer on a unit. */
+export type Buyer = {
+  _id: string; fullName: string; email?: string; phone: string; address?: string;
+  occupation?: string; nextOfKin?: string; nextOfKinPhone?: string; createdAt?: string;
+};
+export type PaymentPlan = "FULL" | "INSTALLMENTS";
 export type Offer = {
   _id: string; buyer: Buyer | string; property: Property | string; unit: Unit | string;
-  agreedPrice: number; paymentPlan: "FULL" | "INSTALLMENTS"; status: string;
+  agreedPrice: number; paymentPlan: PaymentPlan; status: string;
   amountPaid?: number; balance?: number; createdAt?: string;
+  initialDeposit?: number; installmentMonths?: number; validUntil?: string;
+  specialTerms?: string; notes?: string; offerNumber?: string;
 };
 export type Payment = {
-  _id: string; offer: string; amount: number; method: string; reference: string;
-  status: PaymentStatus; paidAt: string; receiptNumber?: string;
+  _id: string; offer: Offer | string; amount: number; method: string; reference: string;
+  status: PaymentStatus; paidAt: string; receiptNumber?: string; receivedBy?: string; note?: string;
 };
+export type Role = "ADMIN" | "MANAGER" | "ACCOUNTS" | "AGENT";
+export type User = { _id?: string; id?: string; name?: string; email: string; role?: Role; active?: boolean };
