@@ -21,6 +21,26 @@ const date = (value?: string | Date) =>
 
 const logo = () => `${window.location.origin}/sainlogo.png`;
 
+/** Signatures printed on receipts, left to right. */
+const RECEIPT_SIGNATORIES = [
+  { image: "/signatures/signature-1.png", label: "Authorised signature" },
+  { image: "/signatures/signature-nathan.png", label: "Iliya Nathan - MD/CEO" },
+];
+
+/** Signatures are only applied once a payment is confirmed. */
+function receiptSignatures(signed: boolean) {
+  return `<div class="sigs">${RECEIPT_SIGNATORIES.map((s) => `<div class="sig">
+    <div class="sigimg">${signed ? `<img src="${window.location.origin}${s.image}" alt="" onerror="this.remove()">` : ""}</div>
+    <div class="sigline"></div><b>${esc(s.label)}</b>
+  </div>`).join("")}</div>`;
+}
+
+const SIGNATURE_STYLES = `
+  .sigs{display:flex;justify-content:space-between;gap:24px}.sig{flex:1;text-align:center}
+  .sigimg{height:var(--sig-h);display:flex;align-items:flex-end;justify-content:center}
+  .sigimg img{max-height:var(--sig-h);max-width:95%;margin-bottom:-4px;object-fit:contain}
+  .sigline{border-bottom:1px solid #1d1d1f;margin-bottom:6px}`;
+
 const contactLine = () =>
   [COMPANY.address, COMPANY.phone, COMPANY.email].filter(Boolean).map(esc).join(" · ");
 
@@ -151,7 +171,7 @@ export function printReceipt(format: ReceiptFormat, { payment, offer, buyer, pro
       <div class="center muted tiny">${esc(amountInWords(payment.amount))}</div>
       ${headline}
       <table>${summary}</table>
-      <div class="sign"><div class="line"></div>Authorised signature</div>
+      <div class="signs">${receiptSignatures(!provisional)}</div>
       <div class="center muted tiny">Thank you for your payment.${provisional ? " Provisional until funds are confirmed." : ""}</div>
     </div>`;
     return openPrint(`Receipt ${receiptNo}`, body, `
@@ -162,7 +182,8 @@ export function printReceipt(format: ReceiptFormat, { payment, offer, buyer, pro
       .amount{font-size:26px;font-weight:bold;text-align:center;margin-top:14px}
       .paidfull,.part{text-align:center;font-weight:bold;font-size:12px;margin:10px 0;padding:6px;border-radius:4px}.paidfull{background:#1d1d1f;color:#fff}.part{background:#ececee}
       table{width:100%;font-size:12px;border-collapse:collapse}td{padding:4px 0}.bal td{border-top:1px solid #1d1d1f;padding-top:6px}
-      .sign{margin:28px 0 10px;text-align:center;font-size:11px}.line{border-bottom:1px solid #1d1d1f;height:28px;margin:0 30px 4px}
+      ${SIGNATURE_STYLES}
+      .signs{--sig-h:72px;margin:22px 0 12px;font-size:10px}.signs .sigs{gap:16px}
       .stamp{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%) rotate(-24deg);font-size:34px;font-weight:bold;color:rgba(200,30,30,.18);border:4px solid rgba(200,30,30,.18);padding:4px 12px;pointer-events:none}
       @media print{.slip{margin:0 auto}@page{size:80mm auto;margin:4mm}}`);
   }
@@ -178,7 +199,7 @@ export function printReceipt(format: ReceiptFormat, { payment, offer, buyer, pro
       <div class="box"><div class="muted small">Amount received</div><div class="amount">${money(payment.amount)}</div>${headline}</div>
       <table>${summary}</table>
     </div>
-    <div class="sigs"><div><div class="sl"></div>Received by${payment.receivedBy ? `: ${esc(payment.receivedBy)}` : ""}</div><div><div class="sl"></div>Authorised signature &amp; stamp</div></div>
+    <div class="signs">${receiptSignatures(!provisional)}</div>
     <footer class="muted small">${provisional ? "This receipt is provisional until the payment is confirmed against the company account. " : ""}Please keep this receipt safely; it is required for allocation and documentation. Payment ID ${esc(payment._id)}</footer>
   </div>`;
   openPrint(`Receipt ${receiptNo}`, body, `
@@ -191,7 +212,8 @@ export function printReceipt(format: ReceiptFormat, { payment, offer, buyer, pro
     .box{border:2px solid #1d1d1f;border-radius:8px;padding:16px}.amount{font-size:28px;font-weight:bold;margin-top:4px}
     .paidfull,.part{margin-top:10px;font-weight:bold;font-size:12px;padding:6px 8px;border-radius:4px;display:inline-block}.paidfull{background:#1d1d1f;color:#fff}.part{background:#ececee}
     table{width:100%;border-collapse:collapse}td{padding:8px 10px;border-bottom:1px solid #e1e1e4}.bal td{border-top:2px solid #1d1d1f;border-bottom:none}
-    .sigs{display:flex;justify-content:space-between;margin-top:60px}.sigs>div{width:42%;font-size:12px}.sl{border-bottom:1px solid #1d1d1f;height:34px;margin-bottom:6px}
+    ${SIGNATURE_STYLES}
+    .signs{--sig-h:90px;margin-top:44px;font-size:12px}.signs .sigs{gap:80px}
     footer{margin-top:36px;border-top:1px solid #e1e1e4;padding-top:10px}
     .stamp{position:absolute;top:42%;left:50%;transform:translate(-50%,-50%) rotate(-20deg);font-size:72px;font-weight:bold;color:rgba(200,30,30,.13);border:6px solid rgba(200,30,30,.13);padding:6px 24px;pointer-events:none}
     @media print{.page{padding:0}@page{size:A4;margin:16mm}}`);
