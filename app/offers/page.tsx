@@ -1,6 +1,6 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
-import { FileText, Plus, X, Download, Search } from "lucide-react";
+import { FileText, Plus, X, Download, Search, PenLine } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
 import { api, money } from "@/lib/api";
@@ -14,7 +14,7 @@ const inDays = (n: number) => new Date(Date.now() + n * 864e5).toISOString().sli
 const blank = {
   buyer: "", location: "", property: "", unit: "", agreedPrice: "", paymentPlan: "INSTALLMENTS" as PaymentPlan,
   initialDeposit: "", installmentMonths: "12", validUntil: inDays(14), specialTerms: "", notes: "",
-  signatory: "", signatoryTitle: "", printAfterSave: true,
+  printAfterSave: true,
 };
 
 export default function OffersPage() {
@@ -56,7 +56,7 @@ export default function OffersPage() {
   }, []);
 
   function openForm() {
-    setForm((f) => ({ ...blank, buyer: f.buyer, property: f.property, signatory: user?.name || "", validUntil: inDays(14) }));
+    setForm((f) => ({ ...blank, buyer: f.buyer, property: f.property, validUntil: inDays(14) }));
     setOpen(true);
   }
 
@@ -90,18 +90,29 @@ export default function OffersPage() {
           buyer: buyers.find((b) => b._id === form.buyer),
           property: chosen,
           unit: chosen?.units.find((u) => u._id === form.unit),
-          signatory: form.signatory,
-          signatoryTitle: form.signatoryTitle,
         });
       }
       setOpen(false);
       setForm(blank);
-      setNotice("Offer created, unit reserved and offer letter generated.");
+      setNotice(can("offers.approve")
+        ? "Draft offer created and unit reserved. Approve it to e-sign the letter."
+        : "Draft offer created and unit reserved. The CEO or COO must approve it before the letter is valid.");
       load();
     } catch (e) {
       setNotice((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function approve(o: Offer) {
+    if (!window.confirm(`Approve offer ${o.offerNumber || ""} and apply your e-signature to the letter?`)) return;
+    try {
+      await api(`/offers/${o._id}/approve`, { method: "POST" });
+      setNotice("Offer approved and e-signed.");
+      load();
+    } catch (e) {
+      setNotice((e as Error).message);
     }
   }
 
@@ -155,11 +166,21 @@ export default function OffersPage() {
                   <td className="px-5 py-4 font-medium">{money(t.total)}</td>
                   <td className="px-5 py-4">{money(t.paid)}</td>
                   <td className="px-5 py-4 font-medium">{t.fullyPaid ? <span className="text-emerald-700">Fully paid</span> : money(t.balance)}</td>
-                  <td className="px-5 py-4"><span className="rounded-full bg-[#e9f2e9] px-2.5 py-1 text-xs text-[#245739]">{o.status}</span></td>
                   <td className="px-5 py-4">
-                    <button onClick={() => printOfferLetter({ offer: o, buyer: b, property: p, unit: u, signatory: user?.name })} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold hover:bg-slate-50">
-                      <Download size={14} /> Offer letter
-                    </button>
+                    <span className={`rounded-full px-2.5 py-1 text-xs ${o.status === "DRAFT" ? "bg-amber-100 text-amber-800" : "bg-[#e9f2e9] text-[#245739]"}`}>{o.status === "DRAFT" ? "Awaiting approval" : o.status}</span>
+                    {o.approval && <p className="mt-1.5 text-[11px] text-slate-400">Signed by {o.approval.name}{o.approval.title ? `, ${o.approval.title}` : ""}</p>}
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex gap-2">
+                      {o.status === "DRAFT" && can("offers.approve") && (
+                        <button onClick={() => approve(o)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#174b34] px-3 py-2 text-xs font-semibold text-white">
+                          <PenLine size={14} /> Approve &amp; e-sign
+                        </button>
+                      )}
+                      <button onClick={() => printOfferLetter({ offer: o, buyer: b, property: p, unit: u })} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold hover:bg-slate-50">
+                        <Download size={14} /> {o.approval ? "Offer letter" : "Draft letter"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -255,10 +276,7 @@ export default function OffersPage() {
                 <label className="block text-xs text-slate-500">Special terms (printed on the letter)
                   <textarea rows={3} value={form.specialTerms} onChange={(e) => setForm({ ...form, specialTerms: e.target.value })} className={input} placeholder="e.g. Price includes infrastructure levy." />
                 </label>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block text-xs text-slate-500">Signatory name<input value={form.signatory} onChange={(e) => setForm({ ...form, signatory: e.target.value })} className={input} /></label>
-                  <label className="block text-xs text-slate-500">Signatory title<input value={form.signatoryTitle} onChange={(e) => setForm({ ...form, signatoryTitle: e.target.value })} className={input} placeholder="e.g. Managing Director" /></label>
-                </div>
+                <p className="rounded-xl bg-[#f7f8f6] p-3 text-xs text-slate-500">The letter is saved as a draft. It is signed electronically when the CEO or COO approves it.</p>
                 <label className="block text-xs text-slate-500">Internal notes (not printed)
                   <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={input} />
                 </label>

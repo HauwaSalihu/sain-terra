@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import mongoose, { Schema, type InferSchemaType } from "mongoose";
 import type { Role } from "../../../lib/types";
 
@@ -11,7 +12,10 @@ const json = {
   },
 };
 
-export const ROLE_VALUES: Role[] = ["ADMIN", "MANAGER", "ACCOUNTS", "AGENT"];
+export const ROLE_VALUES: Role[] = ["SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTS", "AGENT"];
+
+/** Unguessable code printed as a QR code on receipts and offer letters. */
+export const newVerifyToken = () => randomBytes(18).toString("base64url");
 
 const userSchema = new Schema(
   {
@@ -19,10 +23,36 @@ const userSchema = new Schema(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
     role: { type: String, enum: ROLE_VALUES, required: true },
+    title: { type: String, trim: true, default: "" },
+    signature: { type: Schema.Types.ObjectId, ref: "Signature" },
     active: { type: Boolean, default: true },
     lastLoginAt: Date,
   },
   { timestamps: true, ...json },
+);
+
+/**
+ * E-signature images. Never edited or deleted, so a document signed in the
+ * past keeps the exact signature it was signed with.
+ */
+const signatureSchema = new Schema(
+  {
+    user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    image: { type: String, required: true },
+  },
+  { timestamps: true, ...json },
+);
+
+/** A signature applied to a document, with the signer's name and title at that moment. */
+const eSignatureSchema = new Schema(
+  {
+    user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    name: { type: String, required: true },
+    title: String,
+    signature: { type: Schema.Types.ObjectId, ref: "Signature", required: true },
+    signedAt: { type: Date, required: true },
+  },
+  { _id: false },
 );
 
 const unitSchema = new Schema({
@@ -75,8 +105,10 @@ const offerSchema = new Schema(
     validUntil: Date,
     specialTerms: String,
     notes: String,
-    status: { type: String, enum: ["ACTIVE", "COMPLETED", "CANCELLED"], default: "ACTIVE" },
+    status: { type: String, enum: ["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED"], default: "DRAFT" },
     amountPaid: { type: Number, default: 0 },
+    approval: eSignatureSchema,
+    verifyToken: { type: String, unique: true, default: newVerifyToken },
     createdBy: { type: Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true, ...json },
@@ -98,8 +130,9 @@ const paymentSchema = new Schema(
     receivedBy: String,
     note: String,
     recordedBy: { type: Schema.Types.ObjectId, ref: "User" },
-    confirmedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    authorizations: { type: [eSignatureSchema], default: [] },
     confirmedAt: Date,
+    verifyToken: { type: String, unique: true, default: newVerifyToken },
   },
   { timestamps: true, ...json },
 );
@@ -107,6 +140,7 @@ const paymentSchema = new Schema(
 const counterSchema = new Schema({ _id: String, seq: { type: Number, default: 0 } });
 
 export const User = mongoose.model("User", userSchema);
+export const Signature = mongoose.model("Signature", signatureSchema);
 export const Property = mongoose.model("Property", propertySchema);
 export const Buyer = mongoose.model("Buyer", buyerSchema);
 export const Offer = mongoose.model("Offer", offerSchema);

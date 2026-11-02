@@ -11,11 +11,13 @@ const input = "mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3
 const idOf = (u: User) => u._id || u.id || u.email;
 
 export default function UsersPage() {
-  const { user: me } = useAuth();
+  const { user: me, can } = useAuth();
+  const canSuper = can("superadmins.manage");
+  const roleChoices = ROLES.filter((r) => canSuper || r.value !== "SUPER_ADMIN");
   const [users, setUsers] = useState<User[]>([]);
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("");
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "AGENT" as Role });
+  const [form, setForm] = useState({ name: "", email: "", title: "", password: "", role: "AGENT" as Role });
 
   async function load() {
     try {
@@ -31,7 +33,7 @@ export default function UsersPage() {
     try {
       await api("/users", { method: "POST", body: JSON.stringify(form) });
       setOpen(false);
-      setForm({ name: "", email: "", password: "", role: "AGENT" });
+      setForm({ name: "", email: "", title: "", password: "", role: "AGENT" });
       setNotice("Staff account created. Share the temporary password privately.");
       load();
     } catch (e) {
@@ -68,7 +70,7 @@ export default function UsersPage() {
         </div>
       )}
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {ROLES.map((r) => (
           <div key={r.value} className="rounded-2xl border border-slate-200 bg-white p-4">
             <p className="text-sm font-semibold">{r.label}</p>
@@ -80,26 +82,41 @@ export default function UsersPage() {
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead className="bg-[#f7f8f6] text-[11px] uppercase tracking-wider text-slate-400">
-            <tr>{["Name", "Email", "Role", "Status", ""].map((x) => <th key={x} className="px-5 py-4 font-semibold">{x}</th>)}</tr>
+            <tr>{["Name / title", "Email", "Role", "E-signature", "Status", ""].map((x) => <th key={x} className="px-5 py-4 font-semibold">{x}</th>)}</tr>
           </thead>
           <tbody>
             {users.map((u) => {
               const self = me?.email === u.email;
+              const locked = self || (u.role === "SUPER_ADMIN" && !canSuper);
               return (
                 <tr key={idOf(u)} className="border-t border-slate-100">
-                  <td className="px-5 py-4 font-semibold">{u.name || "—"}{self && <span className="ml-2 text-xs font-normal text-slate-400">(you)</span>}</td>
+                  <td className="px-5 py-4">
+                    <p className="font-semibold">{u.name || "—"}{self && <span className="ml-2 text-xs font-normal text-slate-400">(you)</span>}</p>
+                    {(u.role === "SUPER_ADMIN" || u.title) && (
+                      <input
+                        defaultValue={u.title || ""}
+                        disabled={u.role === "SUPER_ADMIN" && !canSuper}
+                        placeholder="Add title"
+                        onBlur={(e) => e.target.value.trim() !== (u.title || "") && update(u, { title: e.target.value.trim() })}
+                        className="mt-1 w-40 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-500 hover:border-slate-200 focus:border-slate-300 focus:outline-none disabled:hover:border-transparent"
+                      />
+                    )}
+                  </td>
                   <td className="px-5 py-4 text-slate-500">{u.email}</td>
                   <td className="px-5 py-4">
-                    <select disabled={self} value={u.role || ""} onChange={(e) => update(u, { role: e.target.value as Role })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm disabled:opacity-60">
+                    <select disabled={locked} value={u.role || ""} onChange={(e) => update(u, { role: e.target.value as Role })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm disabled:opacity-60">
                       {!u.role && <option value="">No role</option>}
-                      {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                      {(locked ? ROLES : roleChoices).map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                     </select>
+                  </td>
+                  <td className="px-5 py-4 text-xs">
+                    {u.role === "SUPER_ADMIN" ? (u.signature ? <span className="text-emerald-700">On file</span> : <span className="text-amber-700">Not added yet</span>) : <span className="text-slate-300">—</span>}
                   </td>
                   <td className="px-5 py-4">
                     <span className={`rounded-full px-2.5 py-1 text-xs ${u.active === false ? "bg-red-100 text-red-800" : "bg-emerald-100 text-emerald-800"}`}>{u.active === false ? "Disabled" : "Active"}</span>
                   </td>
                   <td className="px-5 py-4 text-right">
-                    {!self && (
+                    {!locked && (
                       <button onClick={() => update(u, { active: u.active === false })} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold">
                         {u.active === false ? <><Check size={13} /> Enable</> : <><Ban size={13} /> Disable</>}
                       </button>
@@ -128,10 +145,14 @@ export default function UsersPage() {
             <form onSubmit={submit} className="space-y-4 p-5">
               <label className="block text-xs text-slate-500">Full name *<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={input} /></label>
               <label className="block text-xs text-slate-500">Email *<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={input} /></label>
+              <label className="block text-xs text-slate-500">Title {form.role === "SUPER_ADMIN" ? "*" : "(optional)"}
+                <input required={form.role === "SUPER_ADMIN"} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. MD/CEO or COO" className={input} />
+                <span className="mt-1 block text-[11px] text-slate-400">Printed beside the name on documents they sign.</span>
+              </label>
               <label className="block text-xs text-slate-500">Temporary password *<input required type="password" minLength={8} autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={input} /></label>
               <label className="block text-xs text-slate-500">Role *
                 <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })} className={input}>
-                  {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  {roleChoices.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
                 <span className="mt-1 block text-[11px] text-slate-400">{ROLES.find((r) => r.value === form.role)?.description}</span>
               </label>

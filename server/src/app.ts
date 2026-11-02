@@ -10,7 +10,9 @@ import dashboard from "./routes/dashboard";
 import offers from "./routes/offers";
 import payments from "./routes/payments";
 import properties from "./routes/properties";
+import signatures from "./routes/signatures";
 import users from "./routes/users";
+import verify from "./routes/verify";
 
 export function createApp() {
   const app = express();
@@ -23,6 +25,7 @@ export function createApp() {
     res.json({ ok: true });
   });
   app.use("/api/auth", auth);
+  app.use("/api/verify", verify);
   // Everything below needs a signed-in, active staff account.
   app.use("/api", requireAuth);
   app.use("/api/dashboard", dashboard);
@@ -31,6 +34,7 @@ export function createApp() {
   app.use("/api/offers", offers);
   app.use("/api/payments", payments);
   app.use("/api/users", users);
+  app.use("/api/signatures", signatures);
 
   app.use("/api", (_req, res) => {
     res.status(404).json({ message: "Not found" });
