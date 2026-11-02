@@ -11,6 +11,10 @@ import { startDemo } from "../../lib/demo";
 import { ROLES } from "../../lib/roles";
 import type { Role } from "../../lib/types";
 
+// Demo buttons show when running locally, or on a deployment that opts in.
+const showDemo =
+  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ENABLE_DEMO === "true";
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -185,6 +189,7 @@ function LoginForm() {
           </button>
         </form>
 
+        {showDemo && (
         <div className="mt-5 rounded-2xl border border-dashed border-[#b8954b]/50 bg-[#fbf7ee] p-5">
           <p className="text-sm font-semibold text-slate-800">Just testing?</p>
           <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -205,6 +210,7 @@ function LoginForm() {
             ))}
           </div>
         </div>
+        )}
 
         <p className="mt-6 text-center text-xs text-slate-500">
           © {new Date().getFullYear()} Sain Terra. All rights reserved.
