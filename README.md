@@ -28,7 +28,11 @@ database).
 cd server
 cp .env.example .env        # set MONGODB_URI and a long random JWT_SECRET
 npm install
-npm run create-admin -- "Your Name" you@example.com   # asks for a password
+# Super administrators (CEO and COO): they e-sign receipts and approve offers.
+npm run create-admin -- "Iliya Nathan" ceo@example.com --title "MD/CEO"
+npm run create-admin -- "Stanley Amos" coo@example.com --title "COO"
+# Optional: a regular administrator who manages records but cannot sign.
+npm run create-admin -- "Your Name" you@example.com --role ADMIN
 npm run dev                 # http://localhost:4000/api
 ```
 
@@ -40,8 +44,12 @@ npm install
 npm run dev                        # http://localhost:3000
 ```
 
-Sign in with the admin account you just created, then add Mr Nathan, Sharon and the
-agents on **Staff & access**.
+Each super administrator signs in and adds their signature on **My e-signature** (draw it,
+or upload a photo of the signature on plain white paper). Then add Sharon, the agents and
+other staff on **Staff & access**.
+
+Set `NEXT_PUBLIC_SITE_URL` to the live website address (e.g. `https://portal.sainterra.com`)
+so the QR codes on documents point to it.
 
 Optional env vars printed on offer letters and receipts:
 `NEXT_PUBLIC_COMPANY_ADDRESS`, `NEXT_PUBLIC_COMPANY_PHONE`, `NEXT_PUBLIC_COMPANY_EMAIL`.
@@ -57,15 +65,29 @@ The logo used across the app, offer letters and receipts is `assets/sainlogo.png
 | Properties & units | Add / edit / delete properties and units, filter by location, see who holds each unit. |
 | Subscribers | Each subscriber's price offered, amount paid, balance, payment history, unit availability and status (Awaiting first payment, Paying, Fully paid). |
 | Offer letters | One form (subscriber, unit, price, deposit, instalment months, validity, special terms, signatory) creates the offer and generates a printable / PDF offer letter with the logo. |
-| Payments & receipts | Record payments (with "Pay full balance"), confirm them, and print a receipt in one of two formats: **A4 official** or **compact slip** (80 mm). |
+| Payments & receipts | Record payments (with "Pay full balance"); the CEO and COO each e-sign; print a receipt in one of two formats: **A4 official** or **compact slip** (80 mm). |
+| E-signatures | Super administrators keep one signature on file. It is stamped onto documents with their name, title and the time they signed. |
+| Verification | Every receipt and offer letter carries a unique QR code. Scanning it opens `/verify/<code>` and shows the real record, so fake or altered documents are easy to spot. |
 | Staff & access | Admin-only list of staff accounts with roles. There is no public sign-up. |
 
 ### How receipts work out amounts
 
+### Signing and verification
+
+- **Receipts** need two e-signatures from two different super administrators (CEO and COO).
+  The first to sign appears as **Received by**, the second as **Authorised by**, so the COO
+  should sign first. Until both have signed the receipt is **PROVISIONAL**: it carries no
+  signature images and does not count towards the balance.
+- **Offer letters** are created as drafts and print with a DRAFT watermark until a super
+  administrator clicks **Approve & e-sign**.
+- Only super administrators can create or change super administrator accounts, so nobody
+  else can grant themselves signing rights. Signatures are only ever served to signed-in
+  staff; the public verification page shows who signed and when, never the images.
+
 Every receipt shows the total price, this payment, the total paid to date and the balance.
 The amount paid is subtracted from the total. Once the total has been paid, the receipt is
 marked **PAID IN FULL** with the total price. Pending payments print with a
-"PROVISIONAL" watermark until accounts confirm them.
+"PROVISIONAL" watermark until both the CEO and COO have e-signed them.
 
 ## Role-based access
 
@@ -73,13 +95,14 @@ Only staff accounts created by an administrator can sign in. Suggested setup:
 
 | Role | Can do | Suggested people |
 | --- | --- | --- |
-| Administrator | Everything, including staff accounts and deleting properties | Owner |
-| Manager | Properties, subscribers, offers, confirm payments, receipts | Mr Nathan |
-| Accounts | Record / confirm payments, issue receipts | Sharon |
+| Super administrator | Everything, plus e-signing receipts and approving offer letters | Iliya Nathan (MD/CEO), Stanley Amos (COO) |
+| Administrator | Records and staff accounts, deleting properties; cannot sign | Owner |
+| Manager | Properties, subscribers, offers, record payments, print receipts | Sales manager |
+| Accounts | Record payments, print receipts | Sharon |
 | Agent | Register subscribers, create offers, log pending payments | Agent(s) |
 
-Roles are set in `lib/roles.ts`. The UI hides what a role cannot use, but **the API must
-enforce the same rules**. Never rely on the frontend alone.
+Roles are set in `lib/roles.ts`, which both the website and the API use; the API enforces
+them on every request.
 
 ## API contract
 
@@ -96,5 +119,8 @@ All requests send `Authorization: Bearer <accessToken>`. A `401` signs the user 
 | `GET/POST /properties`, `PATCH/DELETE /properties/:id` | Properties with embedded `units` |
 | `GET/POST /buyers` | Subscribers (`fullName, phone, email, address, occupation, nextOfKin, nextOfKinPhone`) |
 | `GET/POST /offers` | Offers (`buyer, property, unit, agreedPrice, paymentPlan, initialDeposit, installmentMonths, validUntil, specialTerms, notes`). Creating one should reserve the unit. |
-| `GET/POST /payments`, `PATCH /payments/:id/confirm` | Payments. Confirming should assign a `receiptNumber` and mark the unit `SOLD` once fully paid. |
-| `GET/POST /users`, `PATCH /users/:id` | ADMIN only. `{ name, email, password, role }`, patch `role` / `active`. |
+| `GET/POST /payments`, `POST /payments/:id/authorize` | Payments. Super administrators e-sign; the second signature confirms it, assigns a `receiptNumber` and marks the unit `SOLD` once fully paid. |
+| `POST /offers/:id/approve` | Super administrator approves a draft offer and e-signs it. |
+| `PUT /auth/me/signature`, `GET /signatures/:id` | Set your own e-signature (PNG data URL); fetch one for printing (staff only). |
+| `GET /verify/:code` | Public. What a scanned QR code shows; never includes signature images. |
+| `GET/POST /users`, `PATCH /users/:id` | Admins. `{ name, email, password, role, title }`, patch `role` / `title` / `active`. Super administrator accounts only by a super administrator. |

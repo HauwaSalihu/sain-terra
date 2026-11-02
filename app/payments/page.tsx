@@ -1,10 +1,11 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
-import { ReceiptText, Plus, X, Search, FileText, Printer } from "lucide-react";
+import { ReceiptText, Plus, X, Search, FileText, Printer, PenLine } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { useAuth } from "@/contexts/AuthContext";
 import { api, money } from "@/lib/api";
 import { printReceipt, type ReceiptFormat } from "@/lib/documents";
+import { RECEIPT_SIGNATURES_REQUIRED } from "@/lib/roles";
 import { amountInWords, offerBuyer, offerProperty, offerTotals, offerUnit, receiptPosition } from "@/lib/ledger";
 import type { Buyer, Offer, Payment, Property } from "@/lib/types";
 
@@ -13,6 +14,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export default function PaymentsPage() {
   const { user, can } = useAuth();
+  const myId = user?._id || user?.id;
   const [payments, setPayments] = useState<Payment[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [buyers, setBuyers] = useState<Buyer[]>([]);
@@ -53,19 +55,20 @@ export default function PaymentsPage() {
       await api("/payments", { method: "POST", body: JSON.stringify({ ...form, amount, paidAt: new Date(form.paidAt).toISOString() }) });
       setOpen(false);
       setForm({ offer: "", amount: "", method: "BANK_TRANSFER", reference: "", paidAt: today(), receivedBy: "", note: "" });
-      setNotice(can("payments.confirm")
-        ? "Payment recorded. Confirm it after reconciling against the company account."
-        : "Payment recorded as pending. Accounts will confirm it after reconciliation.");
+      setNotice(`Payment recorded as pending. The receipt becomes official once the CEO and COO have both e-signed it.`);
       load();
     } catch (e) {
       setNotice((e as Error).message);
     }
   }
 
-  async function confirm(id: string) {
+  async function authorize(p: Payment) {
+    if (!window.confirm(`Apply your e-signature to the receipt for ${money(p.amount)}? Only sign once the funds are in the company account.`)) return;
     try {
-      await api(`/payments/${id}/confirm`, { method: "PATCH" });
-      setNotice("Payment confirmed. The receipt is now official.");
+      const signed = await api<Payment>(`/payments/${p._id}/authorize`, { method: "POST" });
+      setNotice(signed.status === "CONFIRMED"
+        ? `Receipt ${signed.receiptNumber} is now official and fully signed.`
+        : `Signed. The receipt still needs ${RECEIPT_SIGNATURES_REQUIRED - (signed.authorizations?.length || 0)} more super administrator signature(s).`);
       load();
     } catch (e) {
       setNotice((e as Error).message);
@@ -142,7 +145,7 @@ export default function PaymentsPage() {
                   <td className="px-5 py-4 font-semibold">{money(p.amount)}</td>
                   <td className="px-5 py-4 text-xs">
                     {!pos.known ? "—" : p.status === "PENDING" ? (
-                      <span className="text-amber-700">Awaiting confirmation<p className="mt-1 text-slate-400">{pos.fullyPaid ? "Will clear the balance" : `Balance after: ${money(pos.balance)}`}</p></span>
+                      <span className="text-amber-700">Awaiting signatures<p className="mt-1 text-slate-400">{pos.fullyPaid ? "Will clear the balance" : `Balance after: ${money(pos.balance)}`}</p></span>
                     ) : p.status === "REVERSED" ? (
                       <span className="text-slate-400">Not counted</span>
                     ) : pos.fullyPaid ? (
@@ -152,11 +155,14 @@ export default function PaymentsPage() {
                     )}
                   </td>
                   <td className="px-5 py-4">{p.method.replaceAll("_", " ")}<p className="mt-1 text-xs text-slate-400">{p.reference || "—"}</p></td>
-                  <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs ${p.status === "CONFIRMED" ? "bg-emerald-100 text-emerald-800" : p.status === "REVERSED" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>{p.status}</span></td>
+                  <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs ${p.status === "CONFIRMED" ? "bg-emerald-100 text-emerald-800" : p.status === "REVERSED" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>{p.status === "PENDING" ? `Signed ${p.authorizations?.length || 0} of ${RECEIPT_SIGNATURES_REQUIRED}` : p.status}</span>
+                    {!!p.authorizations?.length && <p className="mt-1.5 text-[11px] leading-4 text-slate-400">{p.authorizations.map((a) => a.title || a.name).join(" · ")}</p>}</td>
                   <td className="px-5 py-4 text-xs">{p.receiptNumber || "Not issued"}</td>
                   <td className="px-5 py-4">
                     <div className="flex gap-2">
-                      {p.status === "PENDING" && can("payments.confirm") && <button onClick={() => confirm(p._id)} className="rounded-lg bg-[#174b34] px-3 py-2 text-xs font-semibold text-white">Confirm</button>}
+                      {p.status === "PENDING" && can("receipts.authorize") && !p.authorizations?.some((a) => a.user === myId) && (
+                        <button onClick={() => authorize(p)} className="inline-flex items-center gap-1 rounded-lg bg-[#174b34] px-3 py-2 text-xs font-semibold text-white"><PenLine size={13} /> E-sign</button>
+                      )}
                       {can("receipts.issue") && (
                         <button onClick={() => receipt(p, format)} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold" title={format === "official" ? "A4 official receipt" : "Compact slip receipt"}>
                           <ReceiptText size={13} /> Receipt
@@ -184,7 +190,7 @@ export default function PaymentsPage() {
             <div className="flex items-center justify-between border-b bg-white p-5">
               <div>
                 <h2 className="font-semibold">Record payment</h2>
-                <p className="mt-1 text-xs text-slate-400">Pending payments do not affect confirmed balances.</p>
+                <p className="mt-1 text-xs text-slate-400">Counts towards the balance once the CEO and COO have both e-signed.</p>
               </div>
               <button onClick={() => setOpen(false)}><X size={19} /></button>
             </div>

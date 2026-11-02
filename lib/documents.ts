@@ -1,6 +1,7 @@
-import { money } from "./api";
+import QRCode from "qrcode";
+import { api, money } from "./api";
 import { amountInWords, receiptPosition } from "./ledger";
-import type { Buyer, Offer, Payment, Property, Unit } from "./types";
+import type { Buyer, ESignature, Offer, Payment, Property, Unit } from "./types";
 
 export const COMPANY = {
   name: "Sain Terra",
@@ -21,43 +22,82 @@ const date = (value?: string | Date) =>
 
 const logo = () => `${window.location.origin}/sainlogo.png`;
 
-/** Signatures printed on receipts, left to right. */
-const RECEIPT_SIGNATORIES = [
-  { image: "/signatures/signature-1.png", label: "Authorised signature" },
-  { image: "/signatures/signature-nathan.png", label: "Iliya Nathan - MD/CEO" },
-];
+/** Public page a scanned QR code opens. */
+export const verifyUrl = (token: string) =>
+  `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/verify/${token}`;
 
-/** Signatures are only applied once a payment is confirmed. */
-function receiptSignatures(signed: boolean) {
-  return `<div class="sigs">${RECEIPT_SIGNATORIES.map((s) => `<div class="sig">
-    <div class="sigimg">${signed ? `<img src="${window.location.origin}${s.image}" alt="" onerror="this.remove()">` : ""}</div>
-    <div class="sigline"></div><b>${esc(s.label)}</b>
-  </div>`).join("")}</div>`;
+const qrCode = (token?: string) =>
+  token ? QRCode.toDataURL(verifyUrl(token), { margin: 1, width: 240, errorCorrectionLevel: "M" }) : Promise.resolve("");
+
+const signatureCache = new Map<string, Promise<string>>();
+/** E-signature images are fetched from the API only at print time. */
+function signatureImage(id: string) {
+  if (!signatureCache.has(id)) {
+    const request = api<{ image: string }>(`/signatures/${id}`).then((r) => r.image);
+    request.catch(() => signatureCache.delete(id));
+    signatureCache.set(id, request);
+  }
+  return signatureCache.get(id)!;
+}
+
+const signedOn = (when: string) =>
+  new Date(when).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+/** One signature slot: e-signature image (when applied), line, role, name and title. */
+function signatureSlot(caption: string, sig: ESignature | undefined, image: string) {
+  const who = sig ? `${esc(sig.name)}${sig.title ? ` - ${esc(sig.title)}` : ""}` : "";
+  return `<div class="sig">
+    <div class="sigimg">${image ? `<img src="${image}" alt="">` : ""}</div>
+    <div class="sigline"></div>
+    <div class="cap">${esc(caption)}</div>
+    ${sig ? `<b>${who}</b><div class="when">E-signed ${esc(signedOn(sig.signedAt))}</div>` : `<div class="when">Awaiting signature</div>`}
+  </div>`;
 }
 
 const SIGNATURE_STYLES = `
   .sigs{display:flex;justify-content:space-between;gap:24px}.sig{flex:1;text-align:center}
   .sigimg{height:var(--sig-h);display:flex;align-items:flex-end;justify-content:center}
   .sigimg img{max-height:var(--sig-h);max-width:95%;margin-bottom:-4px;object-fit:contain}
-  .sigline{border-bottom:1px solid #1d1d1f;margin-bottom:6px}`;
+  .sigline{border-bottom:1px solid #1d1d1f;margin-bottom:5px}
+  .cap{color:#6b6b70;font-size:.9em}.when{color:#6b6b70;font-size:.85em}
+  .verify{display:flex;align-items:center;gap:12px}.verify img{width:var(--qr);height:var(--qr)}
+  .verify .code{font-family:monospace;font-size:10px;word-break:break-all}`;
+
+function verifyBlock(qr: string, token: string | undefined, what: string) {
+  if (!qr || !token) return "";
+  return `<div class="verify"><img src="${qr}" alt="Verification code"><div><b>Scan to verify this ${what}</b><br>
+    <span class="muted">Opens the ${esc(COMPANY.name)} record. If it does not match, the ${what} is not genuine.</span><br>
+    <span class="code muted">${esc(verifyUrl(token))}</span></div></div>`;
+}
 
 const contactLine = () =>
   [COMPANY.address, COMPANY.phone, COMPANY.email].filter(Boolean).map(esc).join(" · ");
 
-function openPrint(title: string, body: string, styles: string) {
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
-  *{box-sizing:border-box}body{font:14px/1.5 Arial,Helvetica,sans-serif;color:#1d1d1f;margin:0;background:#fff}
-  .logo{height:56px;width:auto}.muted{color:#6b6b70}.right{text-align:right}
-  ${styles}</style></head><body>${body}
-  <script>window.onload=()=>{const i=document.images;let n=i.length;if(!n)return window.print();for(const im of i){if(im.complete){if(--n===0)window.print()}else{im.onload=im.onerror=()=>{if(--n===0)window.print()}}}}</script>
-  </body></html>`;
+/**
+ * Opens the print window straight away (so pop-up blockers allow it), then
+ * fills it once signatures and the QR code are ready.
+ */
+async function openPrint(title: string, build: () => Promise<{ body: string; styles: string }>) {
   const w = window.open("", "_blank");
   if (!w) {
     alert("Allow pop-ups for this site to print documents.");
     return;
   }
-  w.document.write(html);
-  w.document.close();
+  w.document.write(`<p style="font:14px Arial;padding:40px">Preparing ${esc(title)}…</p>`);
+  try {
+    const { body, styles } = await build();
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
+  *{box-sizing:border-box}body{font:14px/1.5 Arial,Helvetica,sans-serif;color:#1d1d1f;margin:0;background:#fff}
+  .logo{height:56px;width:auto}.muted{color:#6b6b70}.right{text-align:right}
+  ${styles}</style></head><body>${body}
+  <script>window.onload=()=>{const i=document.images;let n=i.length;if(!n)return window.print();for(const im of i){if(im.complete){if(--n===0)window.print()}else{im.onload=im.onerror=()=>{if(--n===0)window.print()}}}}</script>
+  </body></html>`;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  } catch (err) {
+    w.document.body.innerHTML = `<p style="font:14px Arial;padding:40px;color:#b91c1c">Could not prepare the document: ${esc((err as Error).message)}</p>`;
+  }
 }
 
 export type OfferLetterData = {
@@ -65,11 +105,9 @@ export type OfferLetterData = {
   buyer?: Buyer;
   property?: Property;
   unit?: Unit;
-  signatory?: string;
-  signatoryTitle?: string;
 };
 
-export function printOfferLetter({ offer, buyer, property, unit, signatory, signatoryTitle }: OfferLetterData) {
+export function printOfferLetter({ offer, buyer, property, unit }: OfferLetterData) {
   const ref = offer.offerNumber || `ST/OL/${offer._id.slice(-6).toUpperCase()}`;
   const deposit = offer.initialDeposit || 0;
   const months = offer.installmentMonths || 0;
@@ -79,7 +117,10 @@ export function printOfferLetter({ offer, buyer, property, unit, signatory, sign
       ? `Outright payment of ${money(offer.agreedPrice)} (${esc(amountInWords(offer.agreedPrice))}).`
       : `An initial deposit of ${money(deposit)}${months ? `, with the balance of ${money(offer.agreedPrice - deposit)} spread over ${months} month${months > 1 ? "s" : ""} (approximately ${money(monthly)} per month)` : ", with the balance payable in instalments as agreed with the company"}.`;
 
-  const body = `<div class="page">
+  const approved = !!offer.approval;
+  return openPrint(`Offer letter ${ref}`, async () => {
+  const [qr, image] = await Promise.all([qrCode(offer.verifyToken), offer.approval ? signatureImage(offer.approval.signature) : ""]);
+  const body = `<div class="page">${approved ? "" : `<div class="stamp">DRAFT</div>`}
   <header><img class="logo" src="${logo()}" alt="${esc(COMPANY.name)}"><div class="right muted small">${contactLine()}</div></header>
   <div class="meta"><div><b>Ref:</b> ${esc(ref)}</div><div><b>Date:</b> ${date(offer.createdAt || new Date())}</div></div>
   <div class="to">${esc(buyer?.fullName || "Subscriber")}<br>${esc(buyer?.address || "")}${buyer?.phone ? `<br>${esc(buyer.phone)}` : ""}${buyer?.email ? `<br>${esc(buyer.email)}` : ""}</div>
@@ -105,27 +146,30 @@ export function printOfferLetter({ offer, buyer, property, unit, signatory, sign
   </ol>
   <p>Kindly sign the acceptance below and return a copy to us to confirm your acceptance of this offer.</p>
   <p>Yours faithfully,<br>For: <b>${esc(COMPANY.name)}</b></p>
-  <div class="sigs">
-    <div><div class="line"></div>${esc(signatory || "Authorised signatory")}<br><span class="muted small">${esc(signatoryTitle || "")}</span></div>
-  </div>
+  <div class="signs"><div class="sigs">${signatureSlot("For and on behalf of " + COMPANY.name, offer.approval, image)}<div class="sig"></div></div></div>
+  ${approved ? "" : `<p class="draftnote">DRAFT: not valid until approved and e-signed by the CEO or COO.</p>`}
   <div class="accept">
     <h3>Acceptance</h3>
     <p>I, ${esc(buyer?.fullName || "_______________________")}, accept the above offer on the terms and conditions stated.</p>
-    <div class="sigs"><div><div class="line"></div>Signature</div><div><div class="line"></div>Date</div></div>
+    <div class="sigs"><div class="sig"><div class="sigline" style="height:36px"></div>Signature</div><div class="sig"><div class="sigline" style="height:36px"></div>Date</div></div>
   </div>
-  <footer class="muted small">Offer ID ${esc(offer._id)} · Generated from the ${esc(COMPANY.name)} portal</footer>
+  <footer class="muted small">${verifyBlock(qr, offer.verifyToken, "offer letter")}<div>Offer ID ${esc(offer._id)} · Generated from the ${esc(COMPANY.name)} portal</div></footer>
   </div>`;
 
-  openPrint(`Offer letter ${ref}`, body, `
-  .page{max-width:800px;margin:auto;padding:40px 48px}
+  return { body, styles: `
+  ${SIGNATURE_STYLES}
+  .page{position:relative;max-width:800px;margin:auto;padding:40px 48px}
+  .signs{--sig-h:70px;margin-top:20px;font-size:12px}.draftnote{color:#b91c1c;font-weight:bold;font-size:12px}
+  .stamp{position:fixed;top:40%;left:50%;transform:translate(-50%,-50%) rotate(-24deg);font-size:110px;font-weight:bold;color:rgba(200,30,30,.12);border:8px solid rgba(200,30,30,.12);padding:4px 30px;pointer-events:none}
+  .verify{--qr:84px;text-align:left;margin-bottom:10px}
   header{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;border-bottom:4px solid #3c3c3f;padding-bottom:14px}
   .small{font-size:11px}.meta{display:flex;justify-content:space-between;margin:22px 0}.to{margin-bottom:18px}
   h2{font-size:15px;text-decoration:underline;margin:18px 0}h3{font-size:14px;margin-top:22px}
   table{width:100%;border-collapse:collapse;margin:14px 0}td{padding:9px 10px;border:1px solid #d8d8dc;vertical-align:top}td:first-child{width:32%;background:#f4f4f5;color:#4a4a4f}
   ol{padding-left:20px}li{margin-bottom:6px}
-  .sigs{display:flex;gap:60px;margin-top:40px}.sigs>div{width:240px}.line{border-bottom:1px solid #1d1d1f;height:36px;margin-bottom:6px}
-  .accept{margin-top:34px;border-top:1px dashed #9a9aa0;padding-top:8px}footer{margin-top:40px;text-align:center}
-  @media print{.page{padding:0}@page{margin:18mm}}`);
+  .accept{margin-top:34px;border-top:1px dashed #9a9aa0;padding-top:8px}.accept .sigs{gap:60px;margin-top:30px}footer{margin-top:30px;text-align:center}
+  @media print{.page{padding:0}@page{margin:18mm}}` };
+  });
 }
 
 export type ReceiptData = {
@@ -156,9 +200,18 @@ export function printReceipt(format: ReceiptFormat, { payment, offer, buyer, pro
        <tr class="bal"><td>${pos.fullyPaid ? "Status" : "Outstanding balance"}</td><td class="right"><b>${pos.fullyPaid ? "Fully paid" : money(pos.balance)}</b></td></tr>`
     : `<tr><td>Amount</td><td class="right"><b>${money(payment.amount)}</b></td></tr>`;
   const stamp = provisional ? `<div class="stamp">${payment.status === "REVERSED" ? "REVERSED" : "PROVISIONAL"}</div>` : "";
+  const auths = payment.authorizations || [];
 
-  if (format === "compact") {
-    const body = `<div class="slip">${stamp}
+  return openPrint(`Receipt ${receiptNo}`, async () => {
+    // Signature images only go on a receipt once every required signature is in.
+    const [qr, ...images] = await Promise.all([
+      qrCode(payment.verifyToken),
+      ...[0, 1].map((i) => (!provisional && auths[i] ? signatureImage(auths[i].signature) : Promise.resolve(""))),
+    ]);
+    const signatures = `<div class="sigs">${signatureSlot("Received by", auths[0], images[0])}${signatureSlot("Authorised by", auths[1], images[1])}</div>`;
+
+    if (format === "compact") {
+      const body = `<div class="slip">${stamp}
       <div class="center"><img class="logo" src="${logo()}" alt="${esc(COMPANY.name)}"><div class="muted tiny">${contactLine()}</div></div>
       <div class="title">PAYMENT RECEIPT</div>
       <div class="row"><span>Receipt no.</span><b>${esc(receiptNo)}</b></div>
@@ -171,10 +224,12 @@ export function printReceipt(format: ReceiptFormat, { payment, offer, buyer, pro
       <div class="center muted tiny">${esc(amountInWords(payment.amount))}</div>
       ${headline}
       <table>${summary}</table>
-      <div class="signs">${receiptSignatures(!provisional)}</div>
-      <div class="center muted tiny">Thank you for your payment.${provisional ? " Provisional until funds are confirmed." : ""}</div>
+      <div class="signs">${signatures}</div>
+      ${qr ? `<div class="qr"><img src="${qr}" alt="Verification code"><div class="tiny muted">Scan to verify this receipt</div></div>` : ""}
+      <div class="center muted tiny">Thank you for your payment.${provisional ? " Provisional until signed by the CEO and COO." : ""}</div>
     </div>`;
-    return openPrint(`Receipt ${receiptNo}`, body, `
+      return { body, styles: `
+      ${SIGNATURE_STYLES}
       .slip{position:relative;width:340px;margin:20px auto;padding:18px;border:1px dashed #9a9aa0}
       .center{text-align:center}.logo{height:42px;margin-bottom:6px}.tiny{font-size:10px}
       .title{text-align:center;font-weight:bold;letter-spacing:3px;margin:12px 0;border-top:2px solid #3c3c3f;border-bottom:2px solid #3c3c3f;padding:6px 0}
@@ -182,13 +237,13 @@ export function printReceipt(format: ReceiptFormat, { payment, offer, buyer, pro
       .amount{font-size:26px;font-weight:bold;text-align:center;margin-top:14px}
       .paidfull,.part{text-align:center;font-weight:bold;font-size:12px;margin:10px 0;padding:6px;border-radius:4px}.paidfull{background:#1d1d1f;color:#fff}.part{background:#ececee}
       table{width:100%;font-size:12px;border-collapse:collapse}td{padding:4px 0}.bal td{border-top:1px solid #1d1d1f;padding-top:6px}
-      ${SIGNATURE_STYLES}
-      .signs{--sig-h:72px;margin:22px 0 12px;font-size:10px}.signs .sigs{gap:16px}
+      .signs{--sig-h:64px;margin:20px 0 10px;font-size:10px}.signs .sigs{gap:14px}
+      .qr{text-align:center;margin:8px 0}.qr img{width:96px;height:96px}
       .stamp{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%) rotate(-24deg);font-size:34px;font-weight:bold;color:rgba(200,30,30,.18);border:4px solid rgba(200,30,30,.18);padding:4px 12px;pointer-events:none}
-      @media print{.slip{margin:0 auto}@page{size:80mm auto;margin:4mm}}`);
-  }
+      @media print{.slip{margin:0 auto}@page{size:80mm auto;margin:4mm}}` };
+    }
 
-  const body = `<div class="page">${stamp}
+    const body = `<div class="page">${stamp}
     <header><img class="logo" src="${logo()}" alt="${esc(COMPANY.name)}"><div class="right"><div class="title">OFFICIAL RECEIPT</div><div class="muted small">${contactLine()}</div></div></header>
     <div class="meta"><div><span class="muted">Receipt no.</span><br><b>${esc(receiptNo)}</b></div><div class="right"><span class="muted">Date</span><br><b>${date(payment.paidAt)}</b></div></div>
     <div class="line-item"><span class="muted">Received from</span><span class="fill">${esc(buyer?.fullName || "—")}</span></div>
@@ -199,10 +254,11 @@ export function printReceipt(format: ReceiptFormat, { payment, offer, buyer, pro
       <div class="box"><div class="muted small">Amount received</div><div class="amount">${money(payment.amount)}</div>${headline}</div>
       <table>${summary}</table>
     </div>
-    <div class="signs">${receiptSignatures(!provisional)}</div>
-    <footer class="muted small">${provisional ? "This receipt is provisional until the payment is confirmed against the company account. " : ""}Please keep this receipt safely; it is required for allocation and documentation. Payment ID ${esc(payment._id)}</footer>
+    <div class="signs">${signatures}</div>
+    <footer class="muted small">${verifyBlock(qr, payment.verifyToken, "receipt")}<div>${provisional ? "This receipt is provisional until it is e-signed by the CEO and COO. " : ""}Please keep this receipt safely; it is required for allocation and documentation. Payment ID ${esc(payment._id)}</div></footer>
   </div>`;
-  openPrint(`Receipt ${receiptNo}`, body, `
+    return { body, styles: `
+    ${SIGNATURE_STYLES}
     .page{position:relative;max-width:780px;margin:auto;padding:40px 48px}
     header{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;border-bottom:4px solid #3c3c3f;padding-bottom:14px}
     .title{font-size:20px;font-weight:bold;letter-spacing:4px}.small{font-size:11px}
@@ -212,9 +268,9 @@ export function printReceipt(format: ReceiptFormat, { payment, offer, buyer, pro
     .box{border:2px solid #1d1d1f;border-radius:8px;padding:16px}.amount{font-size:28px;font-weight:bold;margin-top:4px}
     .paidfull,.part{margin-top:10px;font-weight:bold;font-size:12px;padding:6px 8px;border-radius:4px;display:inline-block}.paidfull{background:#1d1d1f;color:#fff}.part{background:#ececee}
     table{width:100%;border-collapse:collapse}td{padding:8px 10px;border-bottom:1px solid #e1e1e4}.bal td{border-top:2px solid #1d1d1f;border-bottom:none}
-    ${SIGNATURE_STYLES}
-    .signs{--sig-h:90px;margin-top:44px;font-size:12px}.signs .sigs{gap:80px}
-    footer{margin-top:36px;border-top:1px solid #e1e1e4;padding-top:10px}
+    .signs{--sig-h:80px;margin-top:36px;font-size:12px}.signs .sigs{gap:80px}
+    footer{margin-top:30px;border-top:1px solid #e1e1e4;padding-top:12px}.verify{--qr:92px;margin-bottom:10px}
     .stamp{position:absolute;top:42%;left:50%;transform:translate(-50%,-50%) rotate(-20deg);font-size:72px;font-weight:bold;color:rgba(200,30,30,.13);border:6px solid rgba(200,30,30,.13);padding:6px 24px;pointer-events:none}
-    @media print{.page{padding:0}@page{size:A4;margin:16mm}}`);
+    @media print{.page{padding:0}@page{size:A4;margin:16mm}}` };
+  });
 }

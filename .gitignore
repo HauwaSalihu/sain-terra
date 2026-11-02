@@ -6,5 +6,3 @@ out
 .DS_Store
 *.tsbuildinfo
 
-# Real signatures are kept out of git; place them here on each deployment.
-public/signatures/*.png

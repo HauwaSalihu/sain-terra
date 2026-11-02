@@ -11,6 +11,7 @@ import {
   FileText,
   X,
   ShieldCheck,
+  PenLine,
   type LucideIcon,
 } from "lucide-react";
 import Image from "next/image";
@@ -25,6 +26,7 @@ const links: { href: string; label: string; icon: LucideIcon; permission?: Permi
   { href: "/offers", label: "Offer letters", icon: FileText },
   { href: "/payments", label: "Payments & receipts", icon: ReceiptText, permission: "payments.view" },
   { href: "/users", label: "Staff & access", icon: ShieldCheck, permission: "users.manage" },
+  { href: "/signature", label: "My e-signature", icon: PenLine, permission: "receipts.authorize" },
 ];
 
 export default function Sidebar({
@@ -111,7 +113,7 @@ export default function Sidebar({
 
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-slate-800">
-              {roleLabel(user?.role)}
+              {user?.title || roleLabel(user?.role)}
             </p>
             <p className="text-xs text-slate-400">
               Internal workspace · staff only

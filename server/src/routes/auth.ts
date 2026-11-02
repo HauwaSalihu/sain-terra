@@ -4,8 +4,8 @@ import jwt, { type SignOptions } from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
 import { config } from "../config";
 import { handle, HttpError, str } from "../http";
-import { requireAuth } from "../middleware/auth";
-import { User } from "../models";
+import { requireAuth, requirePermission } from "../middleware/auth";
+import { Signature, User } from "../models";
 
 const router = Router();
 
@@ -35,6 +35,18 @@ router.get("/me", requireAuth, (req, res) => {
   const { passwordHash: _omit, ...user } = req.user!;
   res.json(user);
 });
+
+const MAX_SIGNATURE_BYTES = 400 * 1024;
+
+/** Super administrators set their own e-signature; nobody can set it for them. */
+router.put("/me/signature", requireAuth, requirePermission("receipts.authorize"), handle(async (req, res) => {
+  const image = typeof req.body?.image === "string" ? req.body.image : "";
+  if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(image)) throw new HttpError(400, "The signature must be a PNG image.");
+  if (image.length > MAX_SIGNATURE_BYTES) throw new HttpError(400, "The signature image is too large. Use a smaller image.");
+  const signature = await Signature.create({ user: req.user!._id, image });
+  const user = await User.findByIdAndUpdate(req.user!._id, { signature: signature._id }, { new: true });
+  res.json(user);
+}));
 
 // Tokens are stateless; the client discards its copy.
 router.post("/logout", (_req, res) => {

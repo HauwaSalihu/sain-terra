@@ -6,9 +6,8 @@ import { Bell, Menu, LogOut, Lock } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { useAuth } from "../contexts/AuthContext";
-import { ROLES, roleLabel, type Permission } from "../lib/roles";
-import { isDemo, resetDemoData, setDemoRole } from "../lib/demo";
-import type { Role } from "../lib/types";
+import { roleLabel, type Permission } from "../lib/roles";
+import { demoUsers, isDemo, resetDemoData, setDemoUser } from "../lib/demo";
 
 export default function AppShell({
   children,
@@ -60,15 +59,17 @@ export default function AppShell({
             <label className="flex items-center gap-1.5">
               Viewing as
               <select
-                value={user.role}
+                value={user._id}
                 onChange={(e) => {
-                  setDemoRole(e.target.value as Role);
+                  setDemoUser(e.target.value);
                   window.location.reload();
                 }}
-                className="rounded border border-amber-300 bg-white px-1.5 py-0.5"
+                className="max-w-[60vw] rounded border border-amber-300 bg-white px-1.5 py-0.5"
               >
-                {ROLES.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
+                {demoUsers().map((u) => (
+                  <option key={u._id} value={u._id}>
+                    {u.name} ({u.title || roleLabel(u.role)})
+                  </option>
                 ))}
               </select>
             </label>
@@ -121,7 +122,7 @@ export default function AppShell({
                 {user.name || user.email}
               </p>
               <p className="text-xs text-slate-500">
-                {roleLabel(user.role)}
+                {user.title || roleLabel(user.role)}
               </p>
             </div>
 

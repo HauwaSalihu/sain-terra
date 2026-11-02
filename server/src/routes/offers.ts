@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { eSignatureOf } from "../esign";
 import { assertId, handle, HttpError, num, str } from "../http";
 import { requirePermission } from "../middleware/auth";
 import { Buyer, nextNumber, Offer, Property } from "../models";
@@ -55,6 +56,27 @@ router.post("/", requirePermission("offers.create"), handle(async (req, res) => 
     await Property.updateOne({ _id: propertyId, "units._id": unitId }, { $set: { "units.$.status": "AVAILABLE" } });
     throw err;
   }
+}));
+
+/** A super administrator approves a draft offer and e-signs the letter. */
+router.post("/:id/approve", requirePermission("offers.approve"), handle(async (req, res) => {
+  const id = assertId(req.params.id);
+  const approved = await Offer.findOneAndUpdate(
+    { _id: id, status: "DRAFT" },
+    { $set: { status: "ACTIVE", approval: eSignatureOf(req.user!) } },
+    { new: true },
+  );
+  if (!approved) {
+    if (!(await Offer.exists({ _id: id }))) throw new HttpError(404, "Offer not found.");
+    throw new HttpError(409, "Only draft offers can be approved.");
+  }
+  // Completed already if it was fully paid while still a draft.
+  if (approved.amountPaid >= approved.agreedPrice) {
+    approved.status = "COMPLETED";
+    await approved.save();
+  }
+  const [full] = await withRelations({ _id: approved._id });
+  res.json(full);
 }));
 
 export default router;
