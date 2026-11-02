@@ -7,6 +7,7 @@ import { requireAuth } from "./middleware/auth";
 import auth from "./routes/auth";
 import buyers from "./routes/buyers";
 import dashboard from "./routes/dashboard";
+import images from "./routes/images";
 import offers from "./routes/offers";
 import payments from "./routes/payments";
 import properties from "./routes/properties";
@@ -19,6 +20,8 @@ export function createApp() {
   app.set("trust proxy", 1);
   app.use(helmet());
   app.use(cors({ origin: config.corsOrigins }));
+  // Photo uploads parse their own (larger) bodies, so they come first.
+  app.use("/api/images", images);
   app.use(express.json({ limit: "1mb" }));
 
   app.get("/api/health", (_req, res) => {

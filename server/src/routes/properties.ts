@@ -1,10 +1,21 @@
 import { Router } from "express";
 import { assertId, handle, HttpError, num, str } from "../http";
 import { requirePermission } from "../middleware/auth";
-import { Offer, Property } from "../models";
+import { Image, Offer, Property } from "../models";
 import { LOCATIONS } from "../../../lib/locations";
 
 const router = Router();
+
+const MAX_IMAGES = 12;
+const isId = (s: string) => /^[a-f0-9]{24}$/i.test(s);
+
+/** Links uploaded photos to the property and deletes ones it no longer uses. */
+async function syncImages(propertyId: unknown, images: string[], previous: string[] = []) {
+  const kept = images.filter(isId);
+  if (kept.length) await Image.updateMany({ _id: { $in: kept } }, { $set: { property: propertyId } });
+  const removed = previous.filter((id) => isId(id) && !kept.includes(id));
+  if (removed.length) await Image.deleteMany({ _id: { $in: removed }, property: propertyId });
+}
 
 type UnitInput = { _id?: string; unitNumber?: string; type?: string; price?: unknown; bedrooms?: unknown; bathrooms?: unknown; description?: string };
 
@@ -20,7 +31,7 @@ function readProperty(body: Record<string, unknown>) {
     location,
     propertyType: str(body.propertyType, 100),
     description: str(body.description) ?? "",
-    images: Array.isArray(body.images) ? body.images.map((s) => str(s, 1000)).filter(Boolean) : [],
+    images: Array.isArray(body.images) ? body.images.map((s) => str(s, 1000)).filter(Boolean).slice(0, MAX_IMAGES) as string[] : [],
     units: units.map((u) => ({
       _id: u._id,
       unitNumber: str(u.unitNumber, 100),
@@ -50,6 +61,7 @@ router.post("/", requirePermission("properties.manage"), handle(async (req, res)
     units: data.units.map(({ _id: _ignored, ...u }) => ({ ...u, status: "AVAILABLE" })),
     createdBy: req.user!._id,
   });
+  await syncImages(property._id, data.images as string[]);
   res.status(201).json(property);
 }));
 
@@ -57,6 +69,7 @@ router.patch("/:id", requirePermission("properties.manage"), handle(async (req, 
   const property = await Property.findById(assertId(req.params.id));
   if (!property) throw new HttpError(404, "Property not found.");
   const data = readProperty(req.body || {});
+  const previousImages = [...property.images];
 
   // Unit status is never set from this form: it follows offers and payments.
   const existing = new Map(property.units.map((u) => [String(u._id), u]));
@@ -76,6 +89,7 @@ router.patch("/:id", requirePermission("properties.manage"), handle(async (req, 
     }),
   });
   await property.save();
+  await syncImages(property._id, data.images as string[], previousImages);
   res.json(property);
 }));
 
@@ -86,6 +100,7 @@ router.delete("/:id", requirePermission("properties.delete"), handle(async (req,
   }
   const deleted = await Property.findByIdAndDelete(id);
   if (!deleted) throw new HttpError(404, "Property not found.");
+  await Image.deleteMany({ property: deleted._id });
   res.status(204).end();
 }));
 

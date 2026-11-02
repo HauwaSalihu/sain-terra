@@ -36,11 +36,32 @@ export function setDemoUser(userId: string) {
 }
 
 export function resetDemoData() {
+  localStorage.removeItem(IMAGES);
+  imageCache = null;
   const db = seed();
   save(db);
   const current = db.users.find((u) => u.role === "SUPER_ADMIN");
   if (current) localStorage.setItem(USER, current._id);
 }
+
+/**
+ * Demo photos are kept apart from the rest of the demo data, and only the
+ * small version is stored, because browser storage holds about 5 MB.
+ */
+const IMAGES = "demoImages.v1";
+let imageCache: Record<string, string> | null = null;
+function demoImages(): Record<string, string> {
+  if (!imageCache) {
+    try {
+      imageCache = JSON.parse(localStorage.getItem(IMAGES) || "{}");
+    } catch {
+      imageCache = {};
+    }
+  }
+  return imageCache!;
+}
+
+export const demoImage = (imageId: string, _size: "thumb" | "full") => demoImages()[imageId] || "";
 
 export function stopDemo() {
   localStorage.removeItem(FLAG);
@@ -259,6 +280,21 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
       return done(undefined);
     }
 
+    if (resource === "images" && method === "POST") {
+      need("properties.manage");
+      const thumb = String(body.thumb || "");
+      if (!/^data:image\/(webp|jpeg);base64,/.test(thumb)) fail("The image must be WebP or JPEG.");
+      const imageId = id();
+      const store = { ...demoImages(), [imageId]: thumb };
+      try {
+        localStorage.setItem(IMAGES, JSON.stringify(store));
+      } catch {
+        fail("Demo storage in this browser is full. Use Reset demo data, or remove some photos.");
+      }
+      imageCache = store;
+      return done({ _id: imageId, width: body.width, height: body.height });
+    }
+
     if (resource === "signatures") {
       const sig = db.signatures.find((x) => x._id === rid);
       if (!sig) fail("Signature not found.");
@@ -282,7 +318,14 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
       if (method === "DELETE") {
         need("properties.delete");
         if (db.offers.some((o) => o.property === rid)) fail("This property has offers against it and cannot be deleted.");
+        const gone = db.properties.find((p) => p._id === rid)?.images || [];
         db.properties = db.properties.filter((p) => p._id !== rid);
+        if (gone.length) {
+          const store = { ...demoImages() };
+          gone.forEach((ref) => delete store[ref]);
+          localStorage.setItem(IMAGES, JSON.stringify(store));
+          imageCache = store;
+        }
         return done(undefined);
       }
       need("properties.manage");
