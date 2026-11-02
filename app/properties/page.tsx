@@ -14,9 +14,11 @@ import {
   ExternalLink,
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
+import ImageUploader from "@/components/ImageUploader";
 import Reveal from "@/components/Reveal";
 import { useAuth } from "@/contexts/AuthContext";
 import { api, money } from "@/lib/api";
+import { imageUrl } from "@/lib/images";
 import { offerBuyer, refId } from "@/lib/ledger";
 import { LOCATIONS as locations } from "@/lib/locations";
 import type { Buyer, Offer, Property } from "@/lib/types";
@@ -26,7 +28,7 @@ const blankForm = () => ({
   location: locations[0] as string,
   propertyType: "Block of flats",
   description: "",
-  images: "",
+  images: [] as string[],
   units: [{ ...blankUnit }] as (typeof blankUnit & { _id?: string; status?: string })[],
 });
 const blankUnit = {
@@ -45,6 +47,8 @@ export default function PropertiesPage() {
   const [notice, setNotice] = useState("");
   const [form, setForm] = useState(blankForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [viewing, setViewing] = useState<string | null>(null);
   const [locationFilter, setLocationFilter] = useState("ALL");
   const [details, setDetails] = useState<Property | null>(null);
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -90,10 +94,7 @@ export default function PropertiesPage() {
     try {
       const payload = {
         ...form,
-        images: form.images
-          .split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean),
+        images: form.images,
         units: form.units.map((u) => ({
           ...u,
           price: Number(u.price),
@@ -126,7 +127,7 @@ export default function PropertiesPage() {
       location: p.location,
       propertyType: p.propertyType,
       description: p.description || "",
-      images: (p.images || []).join("\n"),
+      images: p.images || [],
       units: p.units.map((u) => ({
         _id: u._id,
         status: u.status,
@@ -240,8 +241,9 @@ export default function PropertiesPage() {
                   <div className="relative h-44 bg-gradient-to-br from-[#dce8dd] via-[#eef1e9] to-[#c9d9cb]">
                     {p.images?.[0] ? (
                       <img
-                        src={p.images[0]}
+                        src={imageUrl(p.images[0], "thumb")}
                         alt={p.name}
+                        loading="lazy"
                         className="h-full w-full object-cover"
                       />
                     ) : (
@@ -409,18 +411,16 @@ export default function PropertiesPage() {
                       className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#43815a]"
                     />
                   </label>
-                  <label className="text-xs font-medium text-slate-500 sm:col-span-2">
-                    <span className="flex items-center gap-2">
-                      <ImagePlus size={15} /> Image URLs (one per line)
+                  <div className="text-xs font-medium text-slate-500 sm:col-span-2">
+                    <span className="mb-2 flex items-center gap-2">
+                      <ImagePlus size={15} /> Photos
                     </span>
-                    <textarea
-                      rows={2}
+                    <ImageUploader
                       value={form.images}
-                      onChange={(e) => setField("images", e.target.value)}
-                      placeholder="https://…"
-                      className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#43815a]"
+                      onChange={(images) => setForm((old) => ({ ...old, images }))}
+                      onBusyChange={setUploading}
                     />
-                  </label>
+                  </div>
                 </div>
               </section>
               <section className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -560,7 +560,7 @@ export default function PropertiesPage() {
                   Cancel
                 </button>
                 <button
-                  disabled={busy}
+                  disabled={busy || uploading}
                   className="flex-1 rounded-xl bg-[#174b34] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
                 >
                   {busy ? "Saving…" : editingId ? "Save changes" : "Save property"}
@@ -744,6 +744,24 @@ export default function PropertiesPage() {
                   </div>
                 ))}
               </div>
+              {!!details.images?.length && (
+                <div className="grid grid-cols-3 gap-2">
+                  {details.images.map((ref, i) => (
+                    <button
+                      key={ref}
+                      onClick={() => setViewing(ref)}
+                      className={`overflow-hidden rounded-xl bg-slate-100 ${i === 0 ? "col-span-3 aspect-[16/9]" : "aspect-[4/3]"}`}
+                    >
+                      <img
+                        src={imageUrl(ref, i === 0 ? "full" : "thumb")}
+                        alt={`${details.name} photo ${i + 1}`}
+                        loading="lazy"
+                        className="h-full w-full object-cover transition hover:scale-105"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
               {details.description && (
                 <p className="rounded-xl bg-white p-4 text-sm text-slate-600">
                   {details.description}
@@ -777,6 +795,25 @@ export default function PropertiesPage() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+      {viewing && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setViewing(null)}
+        >
+          <img
+            src={imageUrl(viewing, "full")}
+            alt="Property photo"
+            className="max-h-full max-w-full rounded-lg object-contain"
+          />
+          <button
+            onClick={() => setViewing(null)}
+            aria-label="Close photo"
+            className="absolute right-4 top-4 rounded-full bg-white/90 p-2 text-slate-700"
+          >
+            <X size={18} />
+          </button>
         </div>
       )}
     </AppShell>

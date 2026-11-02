@@ -19,6 +19,8 @@ Logging out leaves demo mode.
 
 ## Running for real
 
+To put it online on free hosting (Vercel, Render, MongoDB Atlas), follow **[DEPLOY.md](DEPLOY.md)**.
+
 You need [MongoDB](https://www.mongodb.com/try/download/community) (or a free MongoDB Atlas
 database).
 

@@ -55,6 +55,24 @@ const eSignatureSchema = new Schema(
   { _id: false },
 );
 
+/**
+ * Property photos, already resized and compressed in the browser. Stored in
+ * the database (not on disk) so they survive redeploys on hosts with
+ * temporary disks. `property` is set once the photo is saved on a property.
+ */
+const imageSchema = new Schema(
+  {
+    contentType: { type: String, required: true },
+    full: { type: Buffer, required: true },
+    thumb: { type: Buffer, required: true },
+    width: Number,
+    height: Number,
+    property: { type: Schema.Types.ObjectId, ref: "Property", default: null, index: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: "User" },
+  },
+  { timestamps: true },
+);
+
 const unitSchema = new Schema({
   unitNumber: { type: String, required: true, trim: true },
   type: { type: String, required: true },
@@ -141,6 +159,7 @@ const counterSchema = new Schema({ _id: String, seq: { type: Number, default: 0 
 
 export const User = mongoose.model("User", userSchema);
 export const Signature = mongoose.model("Signature", signatureSchema);
+export const Image = mongoose.model("Image", imageSchema);
 export const Property = mongoose.model("Property", propertySchema);
 export const Buyer = mongoose.model("Buyer", buyerSchema);
 export const Offer = mongoose.model("Offer", offerSchema);
