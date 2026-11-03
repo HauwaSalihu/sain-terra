@@ -3,6 +3,7 @@ import { DragEvent, useRef, useState } from "react";
 import { ImagePlus, Loader2, Star, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatBytes, imageUrl, optimizeImage } from "@/lib/images";
+import FitImage from "./FitImage";
 
 type Pending = { key: string; preview: string; name: string };
 
@@ -86,7 +87,7 @@ export default function ImageUploader({
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
         {value.map((ref, i) => (
           <div key={ref} className="group relative aspect-[4/3] overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-            <img src={imageUrl(ref, "thumb")} alt="" className="h-full w-full object-cover" />
+            <FitImage src={imageUrl(ref, "thumb")} alt="" />
             {i === 0 && <span className="absolute left-1.5 top-1.5 rounded bg-[#174b34] px-1.5 py-0.5 text-[10px] font-semibold text-white">Cover</span>}
             <div className="absolute right-1.5 top-1.5 flex gap-1">
               {i > 0 && (
