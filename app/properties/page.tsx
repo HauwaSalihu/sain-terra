@@ -14,6 +14,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
+import FitImage from "@/components/FitImage";
 import ImageUploader from "@/components/ImageUploader";
 import Reveal from "@/components/Reveal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -240,12 +241,7 @@ export default function PropertiesPage() {
                 >
                   <div className="relative h-44 bg-gradient-to-br from-[#dce8dd] via-[#eef1e9] to-[#c9d9cb]">
                     {p.images?.[0] ? (
-                      <img
-                        src={imageUrl(p.images[0], "thumb")}
-                        alt={p.name}
-                        loading="lazy"
-                        className="h-full w-full object-cover"
-                      />
+                      <FitImage src={imageUrl(p.images[0], "thumb")} alt={p.name} />
                     ) : (
                       <div className="grid h-full place-items-center text-[#8aa18c]">
                         <Building2 size={42} strokeWidth={1.2} />
@@ -750,14 +746,9 @@ export default function PropertiesPage() {
                     <button
                       key={ref}
                       onClick={() => setViewing(ref)}
-                      className={`overflow-hidden rounded-xl bg-slate-100 ${i === 0 ? "col-span-3 aspect-[16/9]" : "aspect-[4/3]"}`}
+                      className={`overflow-hidden rounded-xl transition hover:opacity-90 ${i === 0 ? "col-span-3 aspect-[16/9]" : "aspect-[4/3]"}`}
                     >
-                      <img
-                        src={imageUrl(ref, i === 0 ? "full" : "thumb")}
-                        alt={`${details.name} photo ${i + 1}`}
-                        loading="lazy"
-                        className="h-full w-full object-cover transition hover:scale-105"
-                      />
+                      <FitImage src={imageUrl(ref, i === 0 ? "full" : "thumb")} alt={`${details.name} photo ${i + 1}`} />
                     </button>
                   ))}
                 </div>

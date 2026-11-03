@@ -7,6 +7,7 @@ import StatCard from "@/components/StatCard";
 import Reveal from "@/components/Reveal";
 import { api, money } from "@/lib/api";
 import { imageUrl } from "@/lib/images";
+import FitImage from "@/components/FitImage";
 import { LOCATIONS } from "@/lib/locations";
 import type { Property } from "@/lib/types";
 
@@ -57,7 +58,7 @@ export default function DashboardPage() {
       <section className="rounded-2xl border border-[#e8ebe6] bg-white p-5 sm:p-6">
         <div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">Property portfolio</h3><p className="mt-1 text-xs text-slate-400">Recently added properties</p></div><Link href="/properties" className="flex items-center gap-1 text-sm font-semibold text-[#286343]">View all <ArrowRight size={15}/></Link></div>
         {data.recentProperties.length ? <div className="mt-5 space-y-3">{data.recentProperties.slice(0,5).map(p => <div key={p._id} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3">
-          <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg bg-[#edf2ed] text-[#286343]">{p.images?.[0] ? <img src={imageUrl(p.images[0], "thumb")} alt="" loading="lazy" className="h-full w-full object-cover"/> : <Building2 size={20}/>}</div>
+          <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg bg-[#edf2ed] text-[#286343]">{p.images?.[0] ? <FitImage src={imageUrl(p.images[0], "thumb")} alt=""/> : <Building2 size={20}/>}</div>
           <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{p.name}</p><p className="mt-1 flex items-center gap-1 text-xs text-slate-400"><MapPin size={12}/>{p.location}</p></div>
           <span className="text-xs text-slate-500">{p.units?.length || 0} units</span>
         </div>)}</div> : <div className="mt-5 rounded-xl bg-[#f7f8f6] p-8 text-center"><Building2 className="mx-auto text-slate-300" size={28}/><p className="mt-3 text-sm font-medium">Your property register starts here</p><p className="mt-1 text-xs text-slate-400">Add your first property to populate the dashboard.</p><Link href="/properties" className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#174b34] px-4 py-2.5 text-sm font-semibold text-white">Add property <ArrowUpRight size={15}/></Link></div>}
