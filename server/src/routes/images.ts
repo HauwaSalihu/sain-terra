@@ -44,14 +44,16 @@ router.post(
  */
 router.get("/:id", handle(async (req, res) => {
   const size = req.query.size === "thumb" ? "thumb" : "full";
-  const image = await Image.findById(assertId(req.params.id), { [size]: 1, contentType: 1 }).lean();
+  // Not .lean(): that returns BSON Binary, which Express would send as JSON text.
+  const image = await Image.findById(assertId(req.params.id), { [size]: 1, contentType: 1 });
   if (!image) throw new HttpError(404, "Image not found.");
-  res.set({
-    "Content-Type": image.contentType,
-    "Cache-Control": "public, max-age=31536000, immutable",
-    "Cross-Origin-Resource-Policy": "cross-origin",
-  });
-  res.send(image[size]);
+  const bytes = Buffer.from(image[size]);
+  // setHeader, not res.set, so Express doesn't append "; charset=utf-8" to an image type.
+  res.setHeader("Content-Type", image.contentType);
+  res.setHeader("Content-Length", bytes.length);
+  res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  res.end(bytes);
 }));
 
 export default router;
