@@ -61,9 +61,10 @@ router.post("/", requirePermission("offers.create"), handle(async (req, res) => 
 /** A super administrator approves a draft offer and e-signs the letter. */
 router.post("/:id/approve", requirePermission("offers.approve"), handle(async (req, res) => {
   const id = assertId(req.params.id);
+  const stamp = await eSignatureOf(req.user!);
   const approved = await Offer.findOneAndUpdate(
     { _id: id, status: "DRAFT" },
-    { $set: { status: "ACTIVE", approval: eSignatureOf(req.user!) } },
+    { $set: { status: "ACTIVE", approval: stamp } },
     { new: true },
   );
   if (!approved) {

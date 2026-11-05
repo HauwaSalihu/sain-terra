@@ -42,7 +42,7 @@ router.post("/", requirePermission("payments.record"), handle(async (req, res) =
 router.post("/:id/authorize", requirePermission("receipts.authorize"), handle(async (req, res) => {
   const id = assertId(req.params.id);
   const me = req.user!;
-  const stamp = eSignatureOf(me);
+  const stamp = await eSignatureOf(me);
 
   const signed = await Payment.findOneAndUpdate(
     {

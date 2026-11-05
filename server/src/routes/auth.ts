@@ -4,6 +4,7 @@ import jwt, { type SignOptions } from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
 import { config } from "../config";
 import { handle, HttpError, str } from "../http";
+import { hasSignature } from "../esign";
 import { requireAuth, requirePermission } from "../middleware/auth";
 import { Signature, User } from "../models";
 
@@ -31,10 +32,11 @@ router.post("/login", loginLimiter, handle(async (req, res) => {
   res.json({ accessToken, user: user.toJSON() });
 }));
 
-router.get("/me", requireAuth, (req, res) => {
+router.get("/me", requireAuth, handle(async (req, res) => {
   const { passwordHash: _omit, ...user } = req.user!;
-  res.json(user);
-});
+  // A signature that no longer exists is reported as missing so it can be re-added.
+  res.json({ ...user, signature: (await hasSignature(user)) ? user.signature : undefined });
+}));
 
 const MAX_SIGNATURE_BYTES = 400 * 1024;
 

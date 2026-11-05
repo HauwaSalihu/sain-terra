@@ -296,7 +296,9 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
     }
 
     if (resource === "signatures") {
-      const sig = db.signatures.find((x) => x._id === rid);
+      const fallback = new URLSearchParams(path.split("?")[1] || "").get("user");
+      const sig = db.signatures.find((x) => x._id === rid)
+        || db.signatures.find((x) => x._id === db.users.find((u) => u._id === fallback)?.signature);
       if (!sig) fail("Signature not found.");
       return done({ image: sig!.image });
     }

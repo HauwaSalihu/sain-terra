@@ -30,14 +30,23 @@ const qrCode = (token?: string) =>
   token ? QRCode.toDataURL(verifyUrl(token), { margin: 1, width: 240, errorCorrectionLevel: "M" }) : Promise.resolve("");
 
 const signatureCache = new Map<string, Promise<string>>();
-/** E-signature images are fetched from the API only at print time. */
-function signatureImage(id: string) {
-  if (!signatureCache.has(id)) {
-    const request = api<{ image: string }>(`/signatures/${id}`).then((r) => r.image);
-    request.catch(() => signatureCache.delete(id));
-    signatureCache.set(id, request);
+/**
+ * E-signature images are fetched from the API only at print time. Never
+ * rejects: if no image can be found the slot still prints the signer's name,
+ * title and signing time, so a document is never blocked by a missing image.
+ */
+function signatureImage(sig: ESignature) {
+  const key = `${sig.signature}:${sig.user}`;
+  if (!signatureCache.has(key)) {
+    const request = api<{ image: string }>(`/signatures/${sig.signature}?user=${encodeURIComponent(sig.user)}`)
+      .then((r) => r.image)
+      .catch(() => {
+        signatureCache.delete(key);
+        return "";
+      });
+    signatureCache.set(key, request);
   }
-  return signatureCache.get(id)!;
+  return signatureCache.get(key)!;
 }
 
 const signedOn = (when: string) =>
@@ -119,7 +128,7 @@ export function printOfferLetter({ offer, buyer, property, unit }: OfferLetterDa
 
   const approved = !!offer.approval;
   return openPrint(`Offer letter ${ref}`, async () => {
-  const [qr, image] = await Promise.all([qrCode(offer.verifyToken), offer.approval ? signatureImage(offer.approval.signature) : ""]);
+  const [qr, image] = await Promise.all([qrCode(offer.verifyToken), offer.approval ? signatureImage(offer.approval) : ""]);
   const body = `<div class="page">${approved ? "" : `<div class="stamp">DRAFT</div>`}
   <header><img class="logo" src="${logo()}" alt="${esc(COMPANY.name)}"><div class="right muted small">${contactLine()}</div></header>
   <div class="meta"><div><b>Ref:</b> ${esc(ref)}</div><div><b>Date:</b> ${date(offer.createdAt || new Date())}</div></div>
@@ -206,7 +215,7 @@ export function printReceipt(format: ReceiptFormat, { payment, offer, buyer, pro
     // Signature images only go on a receipt once every required signature is in.
     const [qr, ...images] = await Promise.all([
       qrCode(payment.verifyToken),
-      ...[0, 1].map((i) => (!provisional && auths[i] ? signatureImage(auths[i].signature) : Promise.resolve(""))),
+      ...[0, 1].map((i) => (!provisional && auths[i] ? signatureImage(auths[i]) : Promise.resolve(""))),
     ]);
     const signatures = `<div class="sigs">${signatureSlot("Received by", auths[0], images[0])}${signatureSlot("Authorised by", auths[1], images[1])}</div>`;
 
